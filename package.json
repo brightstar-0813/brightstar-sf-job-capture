@@ -1,0 +1,25 @@
+{
+  "name": "dice-job-capture",
+  "version": "1.0.0",
+  "description": "Capture Salesforce jobs from Dice every 8 hours — CSV + Slack + Chrome extension UI",
+  "type": "module",
+  "main": "src/capture.js",
+  "scripts": {
+    "capture": "node src/capture.js",
+    "start": "node src/server.js",
+    "jobright:login": "node src/jobright-login.js",
+    "schedule:install": "powershell -ExecutionPolicy Bypass -File scripts/install-all-schedulers.ps1",
+    "schedule:dice": "powershell -ExecutionPolicy Bypass -File scripts/install-scheduler.ps1",
+    "schedule:api": "powershell -ExecutionPolicy Bypass -File scripts/install-api-autostart.ps1",
+    "postinstall": "npx playwright install chromium"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "node-cron": "^3.0.3",
+    "playwright": "1.39.0"
+  }
+}

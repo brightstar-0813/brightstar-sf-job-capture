@@ -1,0 +1,10 @@
+node_modules/
+data/
+download/
+!.gitkeep
+.env
+*.log
+.DS_Store
+playwright-report/
+test-results/
+download/jobright-auth.json
