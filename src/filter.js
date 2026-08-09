@@ -23,13 +23,27 @@ export function isSalesforceEmployer(organization) {
 }
 
 /**
- * Final capture decision for a job: title or description contains "Salesforce"
- * and the employer is not Salesforce itself.
- * @param {{ title?: string, description?: string, organization?: string }} job
+ * Remote-only: keep fully remote roles, drop hybrid and on-site. An empty value
+ * is treated as remote because the Dice search is already restricted to remote
+ * (its detail pages don't expose a workplace-type field).
+ */
+export function isRemoteArrangement(workArrangement) {
+  const w = String(workArrangement || "").toLowerCase();
+  if (/hybrid/.test(w)) return false;
+  if (/on[-\s]?site|onsite|in[-\s]?office|in[-\s]?person/.test(w)) return false;
+  return true;
+}
+
+/**
+ * Final capture decision for a job: title or description contains "Salesforce",
+ * the employer is not Salesforce itself, and the role is remote (not hybrid or
+ * on-site).
+ * @param {{ title?: string, description?: string, organization?: string, work_arrangement?: string }} job
  */
 export function matchesCaptureRule(job) {
   if (!job) return false;
   if (isSalesforceEmployer(job.organization)) return false;
+  if (!isRemoteArrangement(job.work_arrangement)) return false;
   return containsSalesforce(job.title, job.description);
 }
 

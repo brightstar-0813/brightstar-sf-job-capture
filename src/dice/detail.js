@@ -168,7 +168,7 @@ export async function scrapeJobDetail(page, url) {
     title: data.title,
     organization: String(data.organization || "").trim(),
     location: String(data.location || "").trim(),
-    work_arrangement: String(data.work_arrangement || "").trim(),
+    work_arrangement: String(data.work_arrangement || "").trim() || "Remote",
     remote_restricted_to: "",
     experience_level: "",
     employment_type: String(data.employment_type || "").trim(),

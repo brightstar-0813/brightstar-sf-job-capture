@@ -28,6 +28,13 @@ function isSalesforceEmployer(organization) {
   return SALESFORCE_EMPLOYER_RE.test(String(organization || "").trim());
 }
 
+function isRemoteArrangement(workArrangement) {
+  const w = String(workArrangement || "").toLowerCase();
+  if (/hybrid/.test(w)) return false;
+  if (/on[-\s]?site|onsite|in[-\s]?office|in[-\s]?person/.test(w)) return false;
+  return true;
+}
+
 function buildDescription(jr) {
   const parts = [];
   if (jr.jobSummary) parts.push(String(jr.jobSummary).trim());
@@ -178,6 +185,7 @@ async function scrapeAutofillJobs(query) {
       skippedLinkedin += 1;
       continue;
     }
+    if (!isRemoteArrangement(mapped.work_arrangement)) continue;
     if (!isSalesforceJob(mapped)) continue;
 
     delete mapped._applyLink;

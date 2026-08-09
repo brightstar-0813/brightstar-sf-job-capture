@@ -11,6 +11,7 @@ import {
   containsSalesforce,
   isSalesforceEmployer,
   isLinkedinLink,
+  isRemoteArrangement,
 } from "../filter.js";
 
 function sleep(ms) {
@@ -196,6 +197,7 @@ export async function searchJobrightJobs(browser) {
   const seen = new Set();
   let linkedinSkipped = 0;
   let employerSkipped = 0;
+  let nonRemoteSkipped = 0;
   let nonSalesforceSkipped = 0;
   let apiCount = 0;
   let queryOkCount = 0;
@@ -244,6 +246,10 @@ export async function searchJobrightJobs(browser) {
           employerSkipped += 1;
           continue;
         }
+        if (!isRemoteArrangement(mapped.work_arrangement)) {
+          nonRemoteSkipped += 1;
+          continue;
+        }
         if (!isSalesforceJob(mapped)) {
           nonSalesforceSkipped += 1;
           continue;
@@ -265,10 +271,10 @@ export async function searchJobrightJobs(browser) {
   const unauthenticated = !hasAuth || (titles.length > 0 && queryOkCount === 0);
 
   console.log(
-    `[jobright] kept ${all.length} Salesforce jobs` +
+    `[jobright] kept ${all.length} remote Salesforce jobs` +
       ` (titles=${titles.length}, api=${apiCount}, okQueries=${queryOkCount}/${titles.length},` +
       ` skipped LinkedIn=${linkedinSkipped}, skipped Salesforce-employer=${employerSkipped},` +
-      ` skipped non-Salesforce=${nonSalesforceSkipped})`
+      ` skipped non-remote=${nonRemoteSkipped}, skipped non-Salesforce=${nonSalesforceSkipped})`
   );
   if (unauthenticated) {
     console.warn(
