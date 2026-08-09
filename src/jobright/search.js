@@ -7,7 +7,11 @@
 
 import fs from "fs";
 import { config } from "../config.js";
-import { containsSalesforce, isSalesforceEmployer } from "../filter.js";
+import {
+  containsSalesforce,
+  isSalesforceEmployer,
+  isLinkedinLink,
+} from "../filter.js";
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -94,59 +98,11 @@ function isSalesforceJob(mapped) {
 }
 
 /**
- * Prefer DOM label; fall back to apply-link heuristics.
- * APPLY NOW ≈ LinkedIn redirect; AUTOFILL ≈ company ATS.
+ * Exclude jobs whose apply/job link points to LinkedIn (redirect applications
+ * we don't want). Everything else from the API is accepted.
  */
-function isAutofillJob(mapped, btnLabel) {
-  const btn = String(btnLabel || "").toUpperCase();
-  if (/APPLY NOW/.test(btn) && !/AUTOFILL/.test(btn)) return false;
-  if (/AUTOFILL/.test(btn)) return true;
-  if (mapped._easyApply) return true;
-  const link = mapped._applyLink || "";
-  if (/linkedin\.com/i.test(link)) return false;
-  if (mapped._isCompanySite) return true;
-  // Unknown apply type — skip (strict autofill preference)
-  return false;
-}
-
-/**
- * Read apply button label near a job info link.
- * @param {import('playwright').Page} page
- */
-async function readApplyButtons(page) {
-  return page.evaluate(() => {
-    const out = {};
-    const links = Array.from(document.querySelectorAll('a[href*="/jobs/info/"]'));
-    for (const a of links) {
-      const href = (a.href || "").split("?")[0];
-      const id = href.split("/").pop();
-      if (!id) continue;
-      let el = a;
-      let label = "";
-      for (let i = 0; i < 12 && el; i += 1) {
-        const txt = el.innerText || "";
-        const m = txt.match(/APPLY WITH AUTOFILL|APPLY NOW/i);
-        if (m && txt.length < 2500) {
-          label = m[0].toUpperCase();
-          break;
-        }
-        el = el.parentElement;
-      }
-      if (label) out[id] = label;
-    }
-    return out;
-  });
-}
-
-async function collectApplyButtons(page, scrolls = 10) {
-  const buttons = {};
-  for (let i = 0; i < scrolls; i += 1) {
-    Object.assign(buttons, await readApplyButtons(page));
-    await page.evaluate(() => window.scrollBy(0, 1400));
-    await page.waitForTimeout(500);
-  }
-  Object.assign(buttons, await readApplyButtons(page));
-  return buttons;
+function isLinkedinApply(mapped) {
+  return isLinkedinLink(mapped._applyLink, mapped.url);
 }
 
 /**
@@ -238,9 +194,9 @@ export async function searchJobrightJobs(browser) {
   const page = await context.newPage();
   const all = [];
   const seen = new Set();
-  let autofillCount = 0;
-  let applyNowSkipped = 0;
+  let linkedinSkipped = 0;
   let employerSkipped = 0;
+  let nonSalesforceSkipped = 0;
   let apiCount = 0;
 
   const titles =
@@ -271,28 +227,25 @@ export async function searchJobrightJobs(browser) {
         `[jobright] query="${query}" api jobs=${list.length} jobNum=${api.jobNum ?? "?"} ok=${api.ok}`
       );
 
-      const buttons = await collectApplyButtons(page, 12);
-
       for (const item of list) {
         const mapped = mapApiJob(item);
         if (!mapped) continue;
-        const rawId = mapped.id.replace(/^jobright_/, "");
-        const btn = buttons[rawId] || "";
-
-        if (!isAutofillJob(mapped, btn)) {
-          applyNowSkipped += 1;
-          continue;
-        }
-        autofillCount += 1;
 
         if (seen.has(mapped.id)) continue;
         seen.add(mapped.id);
 
+        if (isLinkedinApply(mapped)) {
+          linkedinSkipped += 1;
+          continue;
+        }
         if (isSalesforceEmployer(mapped.organization)) {
           employerSkipped += 1;
           continue;
         }
-        if (!isSalesforceJob(mapped)) continue;
+        if (!isSalesforceJob(mapped)) {
+          nonSalesforceSkipped += 1;
+          continue;
+        }
 
         delete mapped._easyApply;
         delete mapped._applyLink;
@@ -305,9 +258,9 @@ export async function searchJobrightJobs(browser) {
   }
 
   console.log(
-    `[jobright] kept ${all.length} autofill Salesforce jobs` +
-      ` (titles=${titles.length}, api=${apiCount}, skipped non-autofill≈${applyNowSkipped},` +
-      ` skipped Salesforce-employer=${employerSkipped}, autofillSeen≈${autofillCount})`
+    `[jobright] kept ${all.length} Salesforce jobs` +
+      ` (titles=${titles.length}, api=${apiCount}, skipped LinkedIn=${linkedinSkipped},` +
+      ` skipped Salesforce-employer=${employerSkipped}, skipped non-Salesforce=${nonSalesforceSkipped})`
   );
   return all;
 }

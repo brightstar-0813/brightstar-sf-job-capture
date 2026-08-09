@@ -1,8 +1,9 @@
 /**
  * Capture rule: keep a job when its title OR description contains the word
- * "Salesforce" (case-insensitive, word boundary). The employer/company name is
- * NOT used as a match signal, and jobs posted by Salesforce itself are excluded
- * (we want Salesforce-skill roles, not roles at the Salesforce company).
+ * "Salesforce" (case-insensitive, word boundary), EXCEPT jobs whose employer is
+ * Salesforce itself. The employer exclusion is what removes Salesforce-company
+ * postings (whose "Salesforce is the #1 AI CRM…" boilerplate would otherwise
+ * match on description); company name is never used as a positive match signal.
  */
 const SALESFORCE_RE = /\bSalesforce\b/i;
 
@@ -22,7 +23,8 @@ export function isSalesforceEmployer(organization) {
 }
 
 /**
- * Final capture decision for a job.
+ * Final capture decision for a job: title or description contains "Salesforce"
+ * and the employer is not Salesforce itself.
  * @param {{ title?: string, description?: string, organization?: string }} job
  */
 export function matchesCaptureRule(job) {
@@ -33,4 +35,8 @@ export function matchesCaptureRule(job) {
 
 export function filterSalesforceJobs(jobs) {
   return (jobs || []).filter((j) => matchesCaptureRule(j));
+}
+
+export function isLinkedinLink(...links) {
+  return links.some((l) => /linkedin\.com/i.test(String(l || "")));
 }

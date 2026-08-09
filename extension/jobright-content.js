@@ -50,40 +50,6 @@ function parseSalary(salaryDesc) {
   return { min: "", max: "", unit: "" };
 }
 
-function readApplyButtons() {
-  const out = {};
-  const links = Array.from(document.querySelectorAll('a[href*="/jobs/info/"]'));
-  for (const a of links) {
-    const href = (a.href || "").split("?")[0];
-    const id = href.split("/").pop();
-    if (!id) continue;
-    let el = a;
-    let label = "";
-    for (let i = 0; i < 12 && el; i += 1) {
-      const txt = el.innerText || "";
-      const m = txt.match(/APPLY WITH AUTOFILL|APPLY NOW/i);
-      if (m && txt.length < 2500) {
-        label = m[0].toUpperCase();
-        break;
-      }
-      el = el.parentElement;
-    }
-    if (label) out[id] = label;
-  }
-  return out;
-}
-
-async function collectApplyButtons(scrolls = 10) {
-  const buttons = {};
-  for (let i = 0; i < scrolls; i += 1) {
-    Object.assign(buttons, readApplyButtons());
-    window.scrollBy(0, 1400);
-    await new Promise((r) => setTimeout(r, 450));
-  }
-  Object.assign(buttons, readApplyButtons());
-  return buttons;
-}
-
 function mapItem(item, applyLabel) {
   const jr = item?.jobResult || {};
   const company = item?.companyResult || {};
@@ -115,15 +81,10 @@ function mapItem(item, applyLabel) {
   };
 }
 
-function isAutofill(mapped, applyLabel) {
-  const btn = String(applyLabel || "").toUpperCase();
-  if (/APPLY NOW/.test(btn) && !/AUTOFILL/.test(btn)) return false;
-  if (/AUTOFILL/.test(btn)) return true;
-  if (mapped.jobtargetEasyapply) return true;
-  const link = mapped._applyLink || "";
-  if (/linkedin\.com/i.test(link)) return false;
-  if (mapped._isCompanySite) return true;
-  return false;
+function isLinkedinApply(mapped) {
+  const link = String(mapped._applyLink || "");
+  const url = String(mapped.url || "");
+  return /linkedin\.com/i.test(link) || /linkedin\.com/i.test(url);
 }
 
 function isSalesforceJob(mapped) {
@@ -205,27 +166,22 @@ async function scrapeAutofillJobs(query) {
   await ensureSearch(query);
 
   const { list, jobNum, success } = await fetchRecommendJobs(query, 50);
-  const buttons = await collectApplyButtons(12);
 
   const kept = [];
-  let skippedApplyNow = 0;
+  let skippedLinkedin = 0;
 
   for (const item of list) {
-    const jr = item?.jobResult || {};
-    const id = jr.jobId;
-    const applyLabel = buttons[id] || "";
-    const mapped = mapItem(item, applyLabel || "");
+    const mapped = mapItem(item, "");
     if (!mapped) continue;
 
-    if (!isAutofill(mapped, applyLabel)) {
-      skippedApplyNow += 1;
+    if (isLinkedinApply(mapped)) {
+      skippedLinkedin += 1;
       continue;
     }
     if (!isSalesforceJob(mapped)) continue;
 
     delete mapped._applyLink;
     delete mapped._isCompanySite;
-    if (!mapped.applyLabel) mapped.applyLabel = "APPLY WITH AUTOFILL";
     kept.push(mapped);
   }
 
@@ -237,13 +193,7 @@ async function scrapeAutofillJobs(query) {
       jobNum: jobNum ?? null,
       apiOk: success,
       kept: kept.length,
-      skippedApplyNow,
-      autofillButtons: Object.values(buttons).filter((b) =>
-        /AUTOFILL/i.test(b)
-      ).length,
-      applyNowButtons: Object.values(buttons).filter((b) =>
-        /^APPLY NOW$/i.test(b)
-      ).length,
+      skippedLinkedin,
       href: location.href,
     },
   };
