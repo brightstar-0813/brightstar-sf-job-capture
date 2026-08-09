@@ -47,6 +47,18 @@ export const config = {
     process.env.JOBRIGHT_AUTH_PATH || path.join("download", "jobright-auth.json")
   ),
   jobrightMaxPages: Math.max(1, Number(process.env.JOBRIGHT_MAX_PAGES || process.env.MAX_PAGES || 5)),
+  /**
+   * JobRight search titles. JobRight's plain "Salesforce" query returns jobs AT
+   * the Salesforce company; searching specific role titles returns Salesforce-skill
+   * roles across many employers. Comma-separated via JOBRIGHT_TITLES.
+   */
+  jobrightTitles: String(
+    process.env.JOBRIGHT_TITLES ||
+      "Salesforce Administrator,Salesforce Developer,Salesforce Consultant,Salesforce Business Analyst,Salesforce Architect,Salesforce Engineer"
+  )
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
 };
 
 export const CSV_HEADERS = [

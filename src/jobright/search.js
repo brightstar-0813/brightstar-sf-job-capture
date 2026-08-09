@@ -13,11 +13,11 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-export function buildJobrightSearchUrl(page = 1) {
+export function buildJobrightSearchUrl(page = 1, query = config.searchQ) {
   const taxonomy = encodeURIComponent(
-    JSON.stringify([{ taxonomyId: "00-00-00", title: config.searchQ }])
+    JSON.stringify([{ taxonomyId: "00-00-00", title: query }])
   );
-  const value = encodeURIComponent(config.searchQ);
+  const value = encodeURIComponent(query);
   const start = Math.max(0, (page - 1) * config.pageSize);
   return (
     `https://jobright.ai/jobs/search?visit=search&value=${value}` +
@@ -153,8 +153,11 @@ async function collectApplyButtons(page, scrolls = 10) {
  * Fetch job list via JobRight's recommend/search API (session cookies).
  * @param {import('playwright').Page} page
  */
-async function fetchRecommendJobs(page, { count, position = 0, refresh = true }) {
-  const value = config.searchQ;
+async function fetchRecommendJobs(
+  page,
+  { count, position = 0, refresh = true, query = config.searchQ }
+) {
+  const value = query;
   return page.evaluate(
     async ({ value, count, position, refresh }) => {
       const body = {
@@ -237,76 +240,65 @@ export async function searchJobrightJobs(browser) {
   const seen = new Set();
   let autofillCount = 0;
   let applyNowSkipped = 0;
+  let employerSkipped = 0;
   let apiCount = 0;
 
-  const pageCount = Math.max(1, config.jobrightMaxPages);
-  const perPage = Math.max(10, Math.min(50, config.pageSize));
-  const totalWanted = Math.min(100, perPage * pageCount);
+  const titles =
+    config.jobrightTitles && config.jobrightTitles.length
+      ? config.jobrightTitles
+      : [config.searchQ];
+  const perTitle = Math.max(10, Math.min(100, config.pageSize * config.jobrightMaxPages));
 
   try {
-    const url = buildJobrightSearchUrl(1);
-    console.log(`[jobright] open: ${url}`);
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
-    await page.waitForTimeout(3500 + config.delayMs);
+    for (const query of titles) {
+      const url = buildJobrightSearchUrl(1, query);
+      console.log(`[jobright] query="${query}" open: ${url}`);
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+      await page.waitForTimeout(3500 + config.delayMs);
 
-    // Ensure search value is applied
-    const input = page
-      .locator('input[placeholder*="Search" i], input[type="search"]')
-      .first();
-    try {
-      if (await input.count()) {
-        const current = await input.inputValue().catch(() => "");
-        if (!new RegExp(config.searchQ, "i").test(current)) {
-          await input.click({ timeout: 3000 });
-          await input.fill(config.searchQ);
-          await page.keyboard.press("Enter");
-          await page.waitForTimeout(4000);
+      console.log(
+        `[jobright] fetching recommend/search query="${query}" count=${perTitle}`
+      );
+      const api = await fetchRecommendJobs(page, {
+        count: perTitle,
+        position: 0,
+        refresh: true,
+        query,
+      });
+      const list = Array.isArray(api.jobList) ? api.jobList : [];
+      apiCount += list.length;
+      console.log(
+        `[jobright] query="${query}" api jobs=${list.length} jobNum=${api.jobNum ?? "?"} ok=${api.ok}`
+      );
+
+      const buttons = await collectApplyButtons(page, 12);
+
+      for (const item of list) {
+        const mapped = mapApiJob(item);
+        if (!mapped) continue;
+        const rawId = mapped.id.replace(/^jobright_/, "");
+        const btn = buttons[rawId] || "";
+
+        if (!isAutofillJob(mapped, btn)) {
+          applyNowSkipped += 1;
+          continue;
         }
+        autofillCount += 1;
+
+        if (seen.has(mapped.id)) continue;
+        seen.add(mapped.id);
+
+        if (isSalesforceEmployer(mapped.organization)) {
+          employerSkipped += 1;
+          continue;
+        }
+        if (!isSalesforceJob(mapped)) continue;
+
+        delete mapped._easyApply;
+        delete mapped._applyLink;
+        delete mapped._isCompanySite;
+        all.push(mapped);
       }
-    } catch {
-      /* ignore */
-    }
-
-    console.log(`[jobright] fetching recommend/search count=${totalWanted}`);
-    const api = await fetchRecommendJobs(page, {
-      count: totalWanted,
-      position: 0,
-      refresh: true,
-    });
-    const list = Array.isArray(api.jobList) ? api.jobList : [];
-    apiCount = list.length;
-    console.log(
-      `[jobright] api jobs=${apiCount} jobNum=${api.jobNum ?? "?"} ok=${api.ok}`
-    );
-
-    const buttons = await collectApplyButtons(page, 12);
-    console.log(
-      `[jobright] dom apply labels=${Object.keys(buttons).length}` +
-        ` autofill=${Object.values(buttons).filter((b) => /AUTOFILL/i.test(b)).length}` +
-        ` applyNow=${Object.values(buttons).filter((b) => /^APPLY NOW$/i.test(b)).length}`
-    );
-
-    for (const item of list) {
-      const mapped = mapApiJob(item);
-      if (!mapped) continue;
-      const rawId = mapped.id.replace(/^jobright_/, "");
-      const btn = buttons[rawId] || "";
-
-      if (!isAutofillJob(mapped, btn)) {
-        applyNowSkipped += 1;
-        continue;
-      }
-      autofillCount += 1;
-
-      if (seen.has(mapped.id)) continue;
-      seen.add(mapped.id);
-
-      if (!isSalesforceJob(mapped)) continue;
-
-      delete mapped._easyApply;
-      delete mapped._applyLink;
-      delete mapped._isCompanySite;
-      all.push(mapped);
     }
   } finally {
     await context.close();
@@ -314,7 +306,8 @@ export async function searchJobrightJobs(browser) {
 
   console.log(
     `[jobright] kept ${all.length} autofill Salesforce jobs` +
-      ` (api=${apiCount}, skipped non-autofill≈${applyNowSkipped}, autofillSeen≈${autofillCount})`
+      ` (titles=${titles.length}, api=${apiCount}, skipped non-autofill≈${applyNowSkipped},` +
+      ` skipped Salesforce-employer=${employerSkipped}, autofillSeen≈${autofillCount})`
   );
   return all;
 }

@@ -1,7 +1,16 @@
 /**
  * JobRight content script — extract APPLY WITH AUTOFILL Salesforce jobs
  * via POST /swan/recommend/search + DOM apply labels.
+ *
+ * Wrapped in a guarded IIFE: this file is both a manifest content_script AND
+ * injected on demand via chrome.scripting.executeScript. Without the guard the
+ * second injection redeclares the top-level consts ("Identifier already
+ * declared") and adds a duplicate message listener.
  */
+
+(function () {
+  if (window.__SF_JOBRIGHT_CS_LOADED__) return;
+  window.__SF_JOBRIGHT_CS_LOADED__ = true;
 
 const SALESFORCE_RE = /\bSalesforce\b/i;
 // Salesforce as an employer (exclude), but not staffing firms whose name merely
@@ -247,3 +256,4 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     .catch((err) => sendResponse({ ok: false, error: err.message, jobs: [] }));
   return true;
 });
+})();

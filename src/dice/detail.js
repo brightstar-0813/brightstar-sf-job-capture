@@ -32,6 +32,12 @@ export async function scrapeJobDetail(page, url) {
     const text = (el) =>
       el ? (el.textContent || "").replace(/\s+/g, " ").trim() : "";
 
+    const bodyText = document.body ? document.body.innerText || "" : "";
+    const expired =
+      /this job is no longer available|no longer accepting applications|this (job|position|posting) (has expired|is expired|has been filled|is closed)|job (posting )?(has )?expired/i.test(
+        bodyText
+      );
+
     const titleEl =
       document.querySelector('[data-cy="jobTitle"]') ||
       document.querySelector("h1") ||
@@ -109,6 +115,7 @@ export async function scrapeJobDetail(page, url) {
     }
 
     return {
+      expired,
       title: text(titleEl) || (ld && ld.title) || "",
       organization:
         text(companyEl) ||
@@ -157,6 +164,7 @@ export async function scrapeJobDetail(page, url) {
   return {
     id,
     url: jobUrl,
+    expired: data.expired === true,
     title: data.title,
     organization: String(data.organization || "").trim(),
     location: String(data.location || "").trim(),
@@ -195,6 +203,11 @@ export async function scrapeJobDetails(browser, stubs) {
       console.log(`[detail] ${i + 1}/${stubs.length}: ${stub.id}`);
       try {
         const detail = await scrapeJobDetail(page, stub.url);
+        if (detail.expired) {
+          console.log(`[detail] skip ${stub.id}: job no longer available`);
+          if (config.delayMs) await sleep(config.delayMs);
+          continue;
+        }
         results.push({
           ...detail,
           title: detail.title || stub.title || "",
