@@ -7,7 +7,7 @@
 
 import fs from "fs";
 import { config } from "../config.js";
-import { containsSalesforce } from "../filter.js";
+import { containsSalesforce, isSalesforceEmployer } from "../filter.js";
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -89,10 +89,8 @@ function mapApiJob(item) {
 }
 
 function isSalesforceJob(mapped) {
-  return (
-    containsSalesforce(mapped.title, mapped.description) ||
-    containsSalesforce(mapped.organization, "")
-  );
+  if (isSalesforceEmployer(mapped.organization)) return false;
+  return containsSalesforce(mapped.title, mapped.description);
 }
 
 /**

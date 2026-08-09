@@ -4,12 +4,19 @@
  */
 
 const SALESFORCE_RE = /\bSalesforce\b/i;
+// Salesforce as an employer (exclude), but not staffing firms whose name merely
+// contains "Salesforce".
+const SALESFORCE_EMPLOYER_RE = /^\s*salesforce(?:\.com|,?\s*inc\.?)?\s*$/i;
 
 function containsSalesforce(title, description) {
   return (
     SALESFORCE_RE.test(String(title || "")) ||
     SALESFORCE_RE.test(String(description || ""))
   );
+}
+
+function isSalesforceEmployer(organization) {
+  return SALESFORCE_EMPLOYER_RE.test(String(organization || "").trim());
 }
 
 function buildDescription(jr) {
@@ -111,10 +118,8 @@ function isAutofill(mapped, applyLabel) {
 }
 
 function isSalesforceJob(mapped) {
-  return (
-    containsSalesforce(mapped.title, mapped.description) ||
-    containsSalesforce(mapped.organization, "")
-  );
+  if (isSalesforceEmployer(mapped.organization)) return false;
+  return containsSalesforce(mapped.title, mapped.description);
 }
 
 async function fetchRecommendJobs(query, count = 50) {

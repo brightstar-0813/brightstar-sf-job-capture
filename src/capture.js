@@ -8,7 +8,7 @@ import { config } from "./config.js";
 import { searchDiceJobs } from "./dice/search.js";
 import { scrapeJobDetails } from "./dice/detail.js";
 import { searchJobrightJobs } from "./jobright/search.js";
-import { containsSalesforce } from "./filter.js";
+import { matchesCaptureRule } from "./filter.js";
 import {
   beginRun,
   finishRun,
@@ -27,9 +27,11 @@ function ingestJobs(jobs, runId, counts, newJobs) {
       counts.skippedCount += 1;
       continue;
     }
-    if (!containsSalesforce(job.title, job.description)) {
+    if (!matchesCaptureRule(job)) {
       counts.skippedCount += 1;
-      console.log(`[filter] skip ${job.id}: no Salesforce in title/JD`);
+      console.log(
+        `[filter] skip ${job.id}: no Salesforce in title/JD or employer is Salesforce`
+      );
       continue;
     }
     const { status, job: saved } = upsertJob(job, runId);

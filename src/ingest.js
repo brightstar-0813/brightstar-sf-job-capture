@@ -2,7 +2,7 @@
  * Ingest jobs from Chrome extension (JobRight logged-in session).
  */
 
-import { containsSalesforce } from "./filter.js";
+import { matchesCaptureRule } from "./filter.js";
 import {
   beginRun,
   finishRun,
@@ -34,7 +34,7 @@ export async function ingestJobsPayload(jobs, opts = {}) {
       counts.skippedCount += 1;
       continue;
     }
-    if (!containsSalesforce(job.title, job.description)) {
+    if (!matchesCaptureRule(job)) {
       counts.skippedCount += 1;
       continue;
     }
