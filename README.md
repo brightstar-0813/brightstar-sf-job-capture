@@ -12,19 +12,28 @@ Each run writes **separate** files per source:
 - `download/jobright_jobs_latest.csv`
 - `download/store.json` — shared dedupe history
 
-Filter: title or JD must contain the word `Salesforce`.
+Filter (applied to both Dice and JobRight):
 
-### JobRight rule (from your screenshot)
-
-- **Keep:** jobs with **APPLY WITH AUTOFILL**  
-- **Skip:** **APPLY NOW** (usually LinkedIn redirect)
+- **Keep:** title or JD contains the word `Salesforce`, the job is **remote**, and it was **posted within the last `RECENT_DAYS` days** (default 3).
+- **Skip:** jobs at the **Salesforce** company itself, **hybrid/on-site** roles, **LinkedIn** apply/redirect links, and postings **older than `RECENT_DAYS`** (they also age out of the store/CSVs on each run).
+- **Skip (already applied):** jobs you've **already applied to** — JobRight via `POST /swan/job/applied/jobs-v3`, and **Dice** via the *My Jobs → Applied* tab (needs a saved Dice login, see below). Applied jobs are skipped during capture and removed from the local store each run.
 
 ## How automation is split (recommended)
 
 | Source | How it runs automatically |
 |--------|---------------------------|
-| **Dice** | Windows Task Scheduler (`npm run schedule:install`) — no login needed |
+| **Dice** | Windows Task Scheduler (`npm run schedule:install`) — no login needed to capture; an optional saved login lets it skip already-applied jobs |
 | **JobRight** | **Chrome extension** in your logged-in browser — every 8 hours while Chrome is open |
+
+### Optional: skip already-applied Dice jobs
+
+Dice capture works logged-out, but to also **exclude jobs you've already applied to on Dice**, save a one-time session:
+
+```bash
+npm run dice:login
+```
+
+A browser opens — sign in, land on your dashboard, press Enter. The session is saved to `download/dice-auth.json` and reused on every run. When it expires you'll get a Slack alert to re-run `npm run dice:login` (Dice capture keeps working meanwhile, just without applied-job exclusion).
 
 ### Why the extension for JobRight?
 

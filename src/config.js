@@ -35,6 +35,8 @@ export const config = {
   port: Number(process.env.PORT || 3847),
   searchQ: process.env.SEARCH_Q || "Salesforce",
   maxPages: Math.max(1, Number(process.env.MAX_PAGES || 5)),
+  /** Only capture/keep jobs posted within this many days (both sources). */
+  recentDays: Math.max(1, Number(process.env.RECENT_DAYS || 3)),
   pageSize: Math.max(1, Math.min(100, Number(process.env.PAGE_SIZE || 20))),
   headless: bool("HEADLESS", true),
   delayMs: Math.max(0, Number(process.env.DELAY_MS || 800)),
@@ -46,15 +48,37 @@ export const config = {
     root,
     process.env.JOBRIGHT_AUTH_PATH || path.join("download", "jobright-auth.json")
   ),
+  diceAuthPath: path.resolve(
+    root,
+    process.env.DICE_AUTH_PATH || path.join("download", "dice-auth.json")
+  ),
   jobrightMaxPages: Math.max(1, Number(process.env.JOBRIGHT_MAX_PAGES || process.env.MAX_PAGES || 5)),
   /**
-   * JobRight search titles. JobRight's plain "Salesforce" query returns jobs AT
-   * the Salesforce company; searching specific role titles returns Salesforce-skill
-   * roles across many employers. Comma-separated via JOBRIGHT_TITLES.
+   * JobRight search SEEDS (not title filters). A plain "Salesforce" query on
+   * JobRight returns almost only jobs AT the Salesforce company, so we seed the
+   * search with several Salesforce role families to surface Salesforce-skill
+   * roles across many employers. Whether a returned job is KEPT is decided by
+   * the capture rule (word "Salesforce" in title OR description, minus the
+   * Salesforce company) — never by matching one of these seed titles — so
+   * differently-titled roles (e.g. "Software Engineer II (Salesforce)") are
+   * still captured. Broaden/tune via the JOBRIGHT_TITLES env (comma-separated).
    */
   jobrightTitles: String(
     process.env.JOBRIGHT_TITLES ||
-      "Salesforce Administrator,Salesforce Developer,Salesforce Consultant,Salesforce Business Analyst,Salesforce Architect,Salesforce Engineer"
+      [
+        "Salesforce Administrator",
+        "Salesforce Developer",
+        "Salesforce Consultant",
+        "Salesforce Business Analyst",
+        "Salesforce Architect",
+        "Salesforce Engineer",
+        "Salesforce Marketing Cloud",
+        "Salesforce CPQ",
+        "Salesforce Technical Lead",
+        "Salesforce Solution Architect",
+        "Salesforce Project Manager",
+        "Salesforce QA Engineer",
+      ].join(",")
   )
     .split(",")
     .map((s) => s.trim())

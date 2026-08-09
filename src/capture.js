@@ -17,8 +17,13 @@ import {
   closeStore,
   getMeta,
   pruneStore,
+  removeJobs,
 } from "./store.js";
-import { notifyCaptureComplete, notifyJobrightLoginExpired } from "./slack.js";
+import {
+  notifyCaptureComplete,
+  notifyJobrightLoginExpired,
+  notifyDiceLoginExpired,
+} from "./slack.js";
 
 let running = false;
 
@@ -54,6 +59,7 @@ export async function runCapture({ skipSlack = false } = {}) {
   const counts = { newCount: 0, updatedCount: 0, skippedCount: 0 };
   const newJobs = [];
   let jobrightAuthExpired = false;
+  let diceAuthExpired = false;
 
   console.log(
     `[capture] run #${runId} starting (q=${config.searchQ}) dice=${config.captureDice} jobright=${config.captureJobright}`
@@ -64,18 +70,36 @@ export async function runCapture({ skipSlack = false } = {}) {
     browser = await chromium.launch({ headless: config.headless });
 
     if (config.captureDice) {
-      const stubs = await searchDiceJobs(browser);
+      const { jobs: stubs, appliedIds: diceApplied, unauthenticated } =
+        await searchDiceJobs(browser);
+      diceAuthExpired = !!unauthenticated;
       console.log(`[capture] dice listings: ${stubs.length}`);
       const details = await scrapeJobDetails(browser, stubs);
       console.log(`[capture] dice details: ${details.length}`);
       ingestJobs(details, runId, counts, newJobs);
+
+      // Drop any previously stored jobs the user has since applied to on Dice.
+      if (Array.isArray(diceApplied) && diceApplied.length) {
+        const { removed } = removeJobs(diceApplied);
+        if (removed > 0) {
+          console.log(`[capture] removed ${removed} already-applied dice jobs from store`);
+        }
+      }
     }
 
     if (config.captureJobright) {
-      const { jobs: jrJobs, auth } = await searchJobrightJobs(browser);
+      const { jobs: jrJobs, auth, appliedIds } = await searchJobrightJobs(browser);
       console.log(`[capture] jobright jobs: ${jrJobs.length}`);
       jobrightAuthExpired = !!auth?.unauthenticated;
       ingestJobs(jrJobs, runId, counts, newJobs);
+
+      // Drop any previously stored jobs the user has since applied to.
+      if (Array.isArray(appliedIds) && appliedIds.length) {
+        const { removed } = removeJobs(appliedIds);
+        if (removed > 0) {
+          console.log(`[capture] removed ${removed} already-applied jobright jobs from store`);
+        }
+      }
     }
 
     const pruned = pruneStore();
@@ -113,6 +137,12 @@ export async function runCapture({ skipSlack = false } = {}) {
         });
         if (jobrightAuthExpired) {
           await notifyJobrightLoginExpired({
+            webhookUrl: config.slackWebhookUrl,
+            runId,
+          });
+        }
+        if (diceAuthExpired) {
+          await notifyDiceLoginExpired({
             webhookUrl: config.slackWebhookUrl,
             runId,
           });

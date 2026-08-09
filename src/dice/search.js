@@ -2,7 +2,22 @@
  * Dice search listing helpers.
  */
 
+import fs from "fs";
 import { config } from "../config.js";
+import { collectDiceAppliedIds } from "./applied.js";
+
+/**
+ * Map a recency window (days) to Dice's coarse postedDate token. Dice only
+ * supports ONE / THREE / SEVEN / THIRTY, so we pick the smallest bucket that
+ * still covers the requested window; exact-day filtering happens client-side.
+ */
+export function postedDateToken(days) {
+  const d = Math.max(1, Number(days) || 3);
+  if (d <= 1) return "ONE";
+  if (d <= 3) return "THREE";
+  if (d <= 7) return "SEVEN";
+  return "THIRTY";
+}
 
 export function buildSearchUrl(page = 1) {
   const params = new URLSearchParams();
@@ -13,7 +28,7 @@ export function buildSearchUrl(page = 1) {
   params.set("page", String(page));
   params.set("pageSize", String(config.pageSize));
   params.set("language", "en");
-  params.set("filters.postedDate", "SEVEN");
+  params.set("filters.postedDate", postedDateToken(config.recentDays));
   params.set("filters.workplaceTypes", "Remote");
   return `https://www.dice.com/jobs?${params.toString()}`;
 }
@@ -149,16 +164,41 @@ export async function scrapeSearchPage(page) {
  * @param {import('playwright').Browser} browser
  */
 export async function searchDiceJobs(browser) {
-  const context = await browser.newContext({
+  const contextOptions = {
     userAgent:
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     viewport: { width: 1365, height: 900 },
-  });
+  };
+  if (fs.existsSync(config.diceAuthPath)) {
+    contextOptions.storageState = config.diceAuthPath;
+    console.log(`[search] using Dice auth: ${config.diceAuthPath}`);
+  }
+  const hasDiceAuth = fs.existsSync(config.diceAuthPath);
+  const context = await browser.newContext(contextOptions);
   const page = await context.newPage();
   const all = [];
   const seenIds = new Set();
+  let appliedIds = new Set();
+  let appliedSkipped = 0;
+  let diceAuthExpired = false;
 
   try {
+    // With a saved session, read already-applied jobs so we can skip them.
+    if (hasDiceAuth) {
+      const applied = await collectDiceAppliedIds(page).catch(() => null);
+      if (applied) {
+        appliedIds = new Set(applied.ids);
+        diceAuthExpired = applied.loginRedirect === true;
+        if (diceAuthExpired) {
+          console.warn(
+            `[search] Dice session expired — applied jobs can't be excluded. Run: npm run dice:login`
+          );
+        } else {
+          console.log(`[search] already-applied Dice jobs to exclude: ${appliedIds.size}`);
+        }
+      }
+    }
+
     for (let p = 1; p <= config.maxPages; p += 1) {
       const url = buildSearchUrl(p);
       console.log(`[search] page ${p}: ${url}`);
@@ -182,6 +222,10 @@ export async function searchDiceJobs(browser) {
       for (const job of batch) {
         if (seenIds.has(job.id)) continue;
         seenIds.add(job.id);
+        if (appliedIds.has(job.id)) {
+          appliedSkipped += 1;
+          continue;
+        }
         all.push(job);
         newOnPage += 1;
       }
@@ -195,5 +239,15 @@ export async function searchDiceJobs(browser) {
     await context.close();
   }
 
-  return all;
+  if (hasDiceAuth && !diceAuthExpired) {
+    console.log(
+      `[search] dice stubs=${all.length} (skipped already-applied=${appliedSkipped})`
+    );
+  }
+
+  return {
+    jobs: all,
+    appliedIds: Array.from(appliedIds),
+    unauthenticated: hasDiceAuth && diceAuthExpired,
+  };
 }

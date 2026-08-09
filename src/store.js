@@ -3,7 +3,16 @@ import path from "path";
 import { config, CSV_HEADERS } from "./config.js";
 import { writeCsv } from "./csv.js";
 import { resolveTimestampedCsvPath } from "./paths.js";
-import { matchesCaptureRule } from "./filter.js";
+import { matchesCaptureRule, isRecentJob } from "./filter.js";
+
+/**
+ * A job qualifies for the store/CSV output when it matches the capture rule
+ * (remote Salesforce, non-Salesforce employer) AND was posted within the
+ * configured recency window.
+ */
+function matchesOutputRule(job) {
+  return matchesCaptureRule(job) && isRecentJob(job, config.recentDays);
+}
 
 /**
  * File-backed store (JSON) — no native deps.
@@ -223,9 +232,10 @@ export function jobsBySource(source) {
 }
 
 /**
- * Permanently remove stored jobs that no longer satisfy the capture rule
- * (Salesforce-employer, hybrid/on-site, or no "Salesforce" in title/desc).
- * Used to clean out legacy rows captured under older rules.
+ * Permanently remove stored jobs that no longer satisfy the output rule:
+ * the capture rule (Salesforce-employer, hybrid/on-site, or no "Salesforce" in
+ * title/desc) or the recency window (posted more than RECENT_DAYS ago). Used to
+ * clean out legacy rows and age out stale postings.
  * @returns {{ removed: number, kept: number }}
  */
 export function pruneStore() {
@@ -233,8 +243,28 @@ export function pruneStore() {
   const ids = Object.keys(s.jobs);
   let removed = 0;
   for (const id of ids) {
-    if (!matchesCaptureRule(s.jobs[id])) {
+    if (!matchesOutputRule(s.jobs[id])) {
       delete s.jobs[id];
+      removed += 1;
+    }
+  }
+  if (removed > 0) save();
+  return { removed, kept: Object.keys(s.jobs).length };
+}
+
+/**
+ * Permanently remove stored jobs by id (e.g. jobs the user has since applied
+ * to on JobRight). Ignores ids that are not present.
+ * @param {Iterable<string>} ids
+ * @returns {{ removed: number, kept: number }}
+ */
+export function removeJobs(ids) {
+  const s = load();
+  let removed = 0;
+  for (const id of ids || []) {
+    const key = String(id);
+    if (Object.prototype.hasOwnProperty.call(s.jobs, key)) {
+      delete s.jobs[key];
       removed += 1;
     }
   }
@@ -252,9 +282,9 @@ export function pruneStore() {
  */
 export function syncCsv(rows = null, { timestamped = true, source = null } = {}) {
   const writeOne = (src, list) => {
-    // Safety net: never emit jobs that violate the current capture rule, even
-    // if legacy rows linger in the store.
-    const clean = (list || []).filter((j) => matchesCaptureRule(j));
+    // Safety net: never emit jobs that violate the capture rule or the recency
+    // window, even if legacy rows linger in the store.
+    const clean = (list || []).filter((j) => matchesOutputRule(j));
     const prefix =
       src === "jobright" ? config.csvPrefixJobright : config.csvPrefixDice;
     const latestName =

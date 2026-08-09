@@ -4,6 +4,7 @@
 
 import { extractJobIdFromUrl, normalizeJobUrl } from "./search.js";
 import { config } from "../config.js";
+import { parsePostedDate, isWithinRecentDays } from "../filter.js";
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -160,6 +161,13 @@ export async function scrapeJobDetail(page, url) {
       .trim();
   }
 
+  // Normalize posted date to an absolute ISO date so recency stays correct
+  // even after a relative string ("2 days ago") would otherwise go stale.
+  const postedAbs = parsePostedDate(data.date_posted);
+  const datePosted = postedAbs
+    ? postedAbs.toISOString().slice(0, 10)
+    : String(data.date_posted || "");
+
   const id = extractJobIdFromUrl(jobUrl);
   return {
     id,
@@ -178,7 +186,7 @@ export async function scrapeJobDetail(page, url) {
     salary_unit: data.salary_unit || "",
     key_skills: data.key_skills || "",
     source: "dice",
-    date_posted: data.date_posted || "",
+    date_posted: datePosted,
     description: data.description || "",
   };
 }
@@ -205,6 +213,13 @@ export async function scrapeJobDetails(browser, stubs) {
         const detail = await scrapeJobDetail(page, stub.url);
         if (detail.expired) {
           console.log(`[detail] skip ${stub.id}: job no longer available`);
+          if (config.delayMs) await sleep(config.delayMs);
+          continue;
+        }
+        if (isWithinRecentDays(detail.date_posted, config.recentDays) === false) {
+          console.log(
+            `[detail] skip ${stub.id}: posted ${detail.date_posted} (older than ${config.recentDays}d)`
+          );
           if (config.delayMs) await sleep(config.delayMs);
           continue;
         }

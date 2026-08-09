@@ -12,6 +12,8 @@ import {
   isSalesforceEmployer,
   isLinkedinLink,
   isRemoteArrangement,
+  parsePostedDate,
+  isWithinRecentDays,
 } from "../filter.js";
 
 function sleep(ms) {
@@ -69,6 +71,12 @@ function mapApiJob(item) {
     `https://jobright.ai/jobs/info/${jr.jobId}`
   ).split("?")[0];
 
+  // Prefer the absolute epoch publishTime; fall back to the relative desc.
+  const postedAbs = parsePostedDate(jr.publishTime) || parsePostedDate(jr.publishTimeDesc);
+  const datePosted = postedAbs
+    ? postedAbs.toISOString().slice(0, 10)
+    : String(jr.publishTime || jr.publishTimeDesc || "");
+
   return {
     id,
     title: jr.jobTitle || jr.jobNlpTitle || "",
@@ -84,7 +92,7 @@ function mapApiJob(item) {
     salary_unit: salary.unit || (jr.minSalary || jr.maxSalary ? "YEAR" : ""),
     key_skills: "",
     source: "jobright",
-    date_posted: jr.publishTime || jr.publishTimeDesc || "",
+    date_posted: datePosted,
     url,
     description: buildDescription(jr),
     _easyApply: jr.jobtargetEasyapply === true,
@@ -112,11 +120,11 @@ function isLinkedinApply(mapped) {
  */
 async function fetchRecommendJobs(
   page,
-  { count, position = 0, refresh = true, query = config.searchQ }
+  { count, position = 0, refresh = true, query = config.searchQ, daysAgo = null }
 ) {
   const value = query;
   return page.evaluate(
-    async ({ value, count, position, refresh }) => {
+    async ({ value, count, position, refresh, daysAgo }) => {
       const body = {
         searchType: "job_title",
         value,
@@ -140,6 +148,7 @@ async function fetchRecommendJobs(
         excludeCompanyCategory: [],
         excludeSecurityClearance: false,
         excludeUsCitizen: false,
+        daysAgo: daysAgo || null,
         refresh,
         position,
         sortCondition: 0,
@@ -168,8 +177,48 @@ async function fetchRecommendJobs(
         jobNum: json?.result?.jobNum,
       };
     },
-    { value, count, position, refresh }
+    { value, count, position, refresh, daysAgo }
   );
+}
+
+/**
+ * Fetch the set of jobs the user has already applied to on JobRight, via
+ * POST /swan/job/applied/jobs-v3 (applyStatus:0 covers every applied stage).
+ * Returns a Set of store IDs like "jobright_<jobId>".
+ * @param {import('playwright').Page} page
+ */
+async function fetchAppliedJobIds(page) {
+  return page.evaluate(async () => {
+    const ids = [];
+    let cursor = null;
+    let ok = true;
+    for (let i = 0; i < 20; i += 1) {
+      const res = await fetch("https://jobright.ai/swan/job/applied/jobs-v3", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json, text/plain, */*",
+          "x-client-type": "web",
+        },
+        body: JSON.stringify({ cursor, pageSize: 50, applyStatus: 0 }),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        ok = false;
+        break;
+      }
+      const json = await res.json().catch(() => null);
+      const result = json?.result || {};
+      const list = Array.isArray(result.list) ? result.list : [];
+      for (const it of list) {
+        const jobId = it?.jobResult?.jobId || it?.jobId;
+        if (jobId) ids.push(`jobright_${jobId}`);
+      }
+      if (!result.hasMore || !result.cursor) break;
+      cursor = result.cursor;
+    }
+    return { ok, ids };
+  });
 }
 
 /**
@@ -199,8 +248,11 @@ export async function searchJobrightJobs(browser) {
   let employerSkipped = 0;
   let nonRemoteSkipped = 0;
   let nonSalesforceSkipped = 0;
+  let appliedSkipped = 0;
+  let staleSkipped = 0;
   let apiCount = 0;
   let queryOkCount = 0;
+  let appliedIds = new Set();
 
   const titles =
     config.jobrightTitles && config.jobrightTitles.length
@@ -215,6 +267,14 @@ export async function searchJobrightJobs(browser) {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
       await page.waitForTimeout(3500 + config.delayMs);
 
+      if (appliedIds.size === 0) {
+        const applied = await fetchAppliedJobIds(page).catch(() => null);
+        if (applied?.ok && applied.ids.length) {
+          appliedIds = new Set(applied.ids);
+          console.log(`[jobright] already-applied jobs to exclude: ${appliedIds.size}`);
+        }
+      }
+
       console.log(
         `[jobright] fetching recommend/search query="${query}" count=${perTitle}`
       );
@@ -223,6 +283,7 @@ export async function searchJobrightJobs(browser) {
         position: 0,
         refresh: true,
         query,
+        daysAgo: config.recentDays,
       });
       const list = Array.isArray(api.jobList) ? api.jobList : [];
       apiCount += list.length;
@@ -238,6 +299,10 @@ export async function searchJobrightJobs(browser) {
         if (seen.has(mapped.id)) continue;
         seen.add(mapped.id);
 
+        if (appliedIds.has(mapped.id)) {
+          appliedSkipped += 1;
+          continue;
+        }
         if (isLinkedinApply(mapped)) {
           linkedinSkipped += 1;
           continue;
@@ -252,6 +317,10 @@ export async function searchJobrightJobs(browser) {
         }
         if (!isSalesforceJob(mapped)) {
           nonSalesforceSkipped += 1;
+          continue;
+        }
+        if (isWithinRecentDays(mapped.date_posted, config.recentDays) === false) {
+          staleSkipped += 1;
           continue;
         }
 
@@ -274,7 +343,8 @@ export async function searchJobrightJobs(browser) {
     `[jobright] kept ${all.length} remote Salesforce jobs` +
       ` (titles=${titles.length}, api=${apiCount}, okQueries=${queryOkCount}/${titles.length},` +
       ` skipped LinkedIn=${linkedinSkipped}, skipped Salesforce-employer=${employerSkipped},` +
-      ` skipped non-remote=${nonRemoteSkipped}, skipped non-Salesforce=${nonSalesforceSkipped})`
+      ` skipped non-remote=${nonRemoteSkipped}, skipped non-Salesforce=${nonSalesforceSkipped},` +
+      ` skipped already-applied=${appliedSkipped}, skipped stale(>${config.recentDays}d)=${staleSkipped})`
   );
   if (unauthenticated) {
     console.warn(
@@ -284,6 +354,7 @@ export async function searchJobrightJobs(browser) {
 
   return {
     jobs: all,
+    appliedIds: Array.from(appliedIds),
     auth: {
       hadAuthFile: hasAuth,
       attempts: titles.length,

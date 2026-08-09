@@ -35,6 +35,42 @@ function isRemoteArrangement(workArrangement) {
   return true;
 }
 
+// Only keep jobs posted within this many days (mirror of RECENT_DAYS).
+const RECENT_DAYS = 3;
+
+function parsePostedDate(value, now) {
+  now = now || new Date();
+  if (value == null || value === "") return null;
+  if (typeof value === "number" || /^\d+$/.test(String(value).trim())) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    const ms = String(Math.trunc(n)).length <= 10 ? n * 1000 : n;
+    const d = new Date(ms);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const s = String(value).trim().toLowerCase();
+  if (/(^|\b)(just posted|today|moments? ago|minutes? ago|hours? ago|<\s*1\s*day)/.test(s)) {
+    return now;
+  }
+  if (/\byesterday\b/.test(s)) return new Date(now.getTime() - 864e5);
+  const rel = s.match(/(\d+)\+?\s*(hour|day|week|month|year)s?\s*ago/);
+  if (rel) {
+    const unit = { hour: 36e5, day: 864e5, week: 6048e5, month: 2592e6, year: 31536e6 }[rel[2]];
+    return new Date(now.getTime() - Number(rel[1]) * unit);
+  }
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : new Date(parsed);
+}
+
+function isWithinRecentDays(value, days, now) {
+  now = now || new Date();
+  const d = parsePostedDate(value, now);
+  if (!d) return null;
+  const age = now.getTime() - d.getTime();
+  if (age < 0) return true;
+  return age <= days * 864e5;
+}
+
 function buildDescription(jr) {
   const parts = [];
   if (jr.jobSummary) parts.push(String(jr.jobSummary).trim());
@@ -63,6 +99,11 @@ function mapItem(item, applyLabel) {
   if (!jr.jobId) return null;
   const salary = parseSalary(jr.salaryDesc);
   const url = (`https://jobright.ai/jobs/info/${jr.jobId}`).split("?")[0];
+  const postedAbs =
+    parsePostedDate(jr.publishTime) || parsePostedDate(jr.publishTimeDesc);
+  const datePosted = postedAbs
+    ? postedAbs.toISOString().slice(0, 10)
+    : String(jr.publishTime || jr.publishTimeDesc || "");
   return {
     id: `jobright_${jr.jobId}`,
     title: jr.jobTitle || jr.jobNlpTitle || "",
@@ -78,7 +119,7 @@ function mapItem(item, applyLabel) {
     salary_unit: salary.unit || (jr.minSalary || jr.maxSalary ? "YEAR" : ""),
     key_skills: "",
     source: "jobright",
-    date_posted: jr.publishTime || jr.publishTimeDesc || "",
+    date_posted: datePosted,
     url,
     description: buildDescription(jr),
     applyLabel,
@@ -151,6 +192,39 @@ async function fetchRecommendJobs(query, count = 50) {
   };
 }
 
+async function fetchAppliedJobIds() {
+  const ids = new Set();
+  let cursor = null;
+  for (let i = 0; i < 20; i += 1) {
+    let res;
+    try {
+      res = await fetch("https://jobright.ai/swan/job/applied/jobs-v3", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json, text/plain, */*",
+          "x-client-type": "web",
+        },
+        body: JSON.stringify({ cursor, pageSize: 50, applyStatus: 0 }),
+        credentials: "include",
+      });
+    } catch {
+      break;
+    }
+    if (!res.ok) break;
+    const json = await res.json().catch(() => null);
+    const result = json?.result || {};
+    const list = Array.isArray(result.list) ? result.list : [];
+    for (const it of list) {
+      const jobId = it?.jobResult?.jobId || it?.jobId;
+      if (jobId) ids.add(`jobright_${jobId}`);
+    }
+    if (!result.hasMore || !result.cursor) break;
+    cursor = result.cursor;
+  }
+  return ids;
+}
+
 async function ensureSearch(query) {
   const q = query || "Salesforce";
   if (/value=/i.test(location.href)) return;
@@ -173,20 +247,31 @@ async function scrapeAutofillJobs(query) {
   await ensureSearch(query);
 
   const { list, jobNum, success } = await fetchRecommendJobs(query, 50);
+  const appliedIds = await fetchAppliedJobIds();
 
   const kept = [];
   let skippedLinkedin = 0;
+  let skippedApplied = 0;
+  let skippedStale = 0;
 
   for (const item of list) {
     const mapped = mapItem(item, "");
     if (!mapped) continue;
 
+    if (appliedIds.has(mapped.id)) {
+      skippedApplied += 1;
+      continue;
+    }
     if (isLinkedinApply(mapped)) {
       skippedLinkedin += 1;
       continue;
     }
     if (!isRemoteArrangement(mapped.work_arrangement)) continue;
     if (!isSalesforceJob(mapped)) continue;
+    if (isWithinRecentDays(mapped.date_posted, RECENT_DAYS) === false) {
+      skippedStale += 1;
+      continue;
+    }
 
     delete mapped._applyLink;
     delete mapped._isCompanySite;
@@ -202,6 +287,9 @@ async function scrapeAutofillJobs(query) {
       apiOk: success,
       kept: kept.length,
       skippedLinkedin,
+      skippedApplied,
+      skippedStale,
+      appliedTotal: appliedIds.size,
       href: location.href,
     },
   };
