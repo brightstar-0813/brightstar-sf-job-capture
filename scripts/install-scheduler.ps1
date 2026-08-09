@@ -40,14 +40,22 @@ $settings = New-ScheduledTaskSettingsSet `
   -StartWhenAvailable `
   -MultipleInstances IgnoreNew
 
+# Run whether the user is logged on or not (S4U = no stored password needed).
+# The task runs in the background under this account whenever the system is on.
+$principal = New-ScheduledTaskPrincipal `
+  -UserId "$env:USERDOMAIN\$env:USERNAME" `
+  -LogonType S4U `
+  -RunLevel Limited
+
 Register-ScheduledTask `
   -TaskName $taskName `
   -Action $action `
   -Trigger $trigger `
   -Settings $settings `
+  -Principal $principal `
   -Description "Capture Salesforce jobs from Dice + JobRight (APPLY WITH AUTOFILL only) every 8 hours" `
   -Force | Out-Null
 
-Write-Host "Scheduled task '$taskName' installed (starts ~$start, every 8 hours)."
+Write-Host "Scheduled task '$taskName' installed (starts ~$start, every 8 hours, runs whether logged on or not)."
 Write-Host "Run now:  Start-ScheduledTask -TaskName '$taskName'"
 Write-Host "JobRight: use Chrome extension + API autostart (npm run schedule:api)"
