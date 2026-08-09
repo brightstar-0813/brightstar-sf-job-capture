@@ -9,6 +9,7 @@ import {
   upsertJob,
   syncCsv,
   getMeta,
+  pruneStore,
 } from "./store.js";
 import { notifyCaptureComplete } from "./slack.js";
 import { config } from "./config.js";
@@ -58,6 +59,7 @@ export async function ingestJobsPayload(jobs, opts = {}) {
     }
   }
 
+  pruneStore();
   const files = syncCsv(null, { timestamped: true, source });
   finishRun(runId, counts);
 

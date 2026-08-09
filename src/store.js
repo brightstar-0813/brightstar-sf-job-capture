@@ -3,6 +3,7 @@ import path from "path";
 import { config, CSV_HEADERS } from "./config.js";
 import { writeCsv } from "./csv.js";
 import { resolveTimestampedCsvPath } from "./paths.js";
+import { matchesCaptureRule } from "./filter.js";
 
 /**
  * File-backed store (JSON) — no native deps.
@@ -222,6 +223,26 @@ export function jobsBySource(source) {
 }
 
 /**
+ * Permanently remove stored jobs that no longer satisfy the capture rule
+ * (Salesforce-employer, hybrid/on-site, or no "Salesforce" in title/desc).
+ * Used to clean out legacy rows captured under older rules.
+ * @returns {{ removed: number, kept: number }}
+ */
+export function pruneStore() {
+  const s = load();
+  const ids = Object.keys(s.jobs);
+  let removed = 0;
+  for (const id of ids) {
+    if (!matchesCaptureRule(s.jobs[id])) {
+      delete s.jobs[id];
+      removed += 1;
+    }
+  }
+  if (removed > 0) save();
+  return { removed, kept: Object.keys(s.jobs).length };
+}
+
+/**
  * Write separate CSVs for Dice and JobRight (timestamped + latest).
  * @returns {{
  *   dice: { csvPath: string, latestPath: string },
@@ -231,17 +252,20 @@ export function jobsBySource(source) {
  */
 export function syncCsv(rows = null, { timestamped = true, source = null } = {}) {
   const writeOne = (src, list) => {
+    // Safety net: never emit jobs that violate the current capture rule, even
+    // if legacy rows linger in the store.
+    const clean = (list || []).filter((j) => matchesCaptureRule(j));
     const prefix =
       src === "jobright" ? config.csvPrefixJobright : config.csvPrefixDice;
     const latestName =
       src === "jobright" ? config.csvLatestJobright : config.csvLatestDice;
     const latestPath = path.join(config.dataDir, latestName);
-    writeCsv(latestPath, list);
+    writeCsv(latestPath, clean);
 
     let csvPath = latestPath;
     if (timestamped) {
       csvPath = resolveTimestampedCsvPath(config.dataDir, prefix);
-      writeCsv(csvPath, list);
+      writeCsv(csvPath, clean);
     }
     setMeta(`last_csv_path_${src}`, csvPath);
     setMeta(`last_csv_latest_path_${src}`, latestPath);

@@ -16,6 +16,7 @@ import {
   syncCsv,
   closeStore,
   getMeta,
+  pruneStore,
 } from "./store.js";
 import { notifyCaptureComplete, notifyJobrightLoginExpired } from "./slack.js";
 
@@ -77,6 +78,10 @@ export async function runCapture({ skipSlack = false } = {}) {
       ingestJobs(jrJobs, runId, counts, newJobs);
     }
 
+    const pruned = pruneStore();
+    if (pruned.removed > 0) {
+      console.log(`[capture] pruned ${pruned.removed} legacy jobs no longer matching rule`);
+    }
     const { dice, jobright } = syncCsv();
     console.log(
       `[capture] done — new=${counts.newCount} updated=${counts.updatedCount} skipped=${counts.skippedCount}`
