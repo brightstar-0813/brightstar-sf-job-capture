@@ -198,6 +198,7 @@ export async function searchJobrightJobs(browser) {
   let employerSkipped = 0;
   let nonSalesforceSkipped = 0;
   let apiCount = 0;
+  let queryOkCount = 0;
 
   const titles =
     config.jobrightTitles && config.jobrightTitles.length
@@ -223,6 +224,7 @@ export async function searchJobrightJobs(browser) {
       });
       const list = Array.isArray(api.jobList) ? api.jobList : [];
       apiCount += list.length;
+      if (api.ok) queryOkCount += 1;
       console.log(
         `[jobright] query="${query}" api jobs=${list.length} jobNum=${api.jobNum ?? "?"} ok=${api.ok}`
       );
@@ -257,10 +259,30 @@ export async function searchJobrightJobs(browser) {
     await context.close();
   }
 
+  // Session is considered unauthenticated (login missing/expired) when there
+  // was no auth file, or every recommend/search query failed (ok=false). A
+  // valid session returns ok=true even when there are zero matching jobs.
+  const unauthenticated = !hasAuth || (titles.length > 0 && queryOkCount === 0);
+
   console.log(
     `[jobright] kept ${all.length} Salesforce jobs` +
-      ` (titles=${titles.length}, api=${apiCount}, skipped LinkedIn=${linkedinSkipped},` +
-      ` skipped Salesforce-employer=${employerSkipped}, skipped non-Salesforce=${nonSalesforceSkipped})`
+      ` (titles=${titles.length}, api=${apiCount}, okQueries=${queryOkCount}/${titles.length},` +
+      ` skipped LinkedIn=${linkedinSkipped}, skipped Salesforce-employer=${employerSkipped},` +
+      ` skipped non-Salesforce=${nonSalesforceSkipped})`
   );
-  return all;
+  if (unauthenticated) {
+    console.warn(
+      `[jobright] session unauthenticated (login missing or expired) — run: npm run jobright:login`
+    );
+  }
+
+  return {
+    jobs: all,
+    auth: {
+      hadAuthFile: hasAuth,
+      attempts: titles.length,
+      okQueries: queryOkCount,
+      unauthenticated,
+    },
+  };
 }

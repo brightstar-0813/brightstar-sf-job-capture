@@ -17,7 +17,7 @@ import {
   closeStore,
   getMeta,
 } from "./store.js";
-import { notifyCaptureComplete } from "./slack.js";
+import { notifyCaptureComplete, notifyJobrightLoginExpired } from "./slack.js";
 
 let running = false;
 
@@ -52,6 +52,7 @@ export async function runCapture({ skipSlack = false } = {}) {
   const runId = beginRun();
   const counts = { newCount: 0, updatedCount: 0, skippedCount: 0 };
   const newJobs = [];
+  let jobrightAuthExpired = false;
 
   console.log(
     `[capture] run #${runId} starting (q=${config.searchQ}) dice=${config.captureDice} jobright=${config.captureJobright}`
@@ -70,8 +71,9 @@ export async function runCapture({ skipSlack = false } = {}) {
     }
 
     if (config.captureJobright) {
-      const jrJobs = await searchJobrightJobs(browser);
-      console.log(`[capture] jobright autofill jobs: ${jrJobs.length}`);
+      const { jobs: jrJobs, auth } = await searchJobrightJobs(browser);
+      console.log(`[capture] jobright jobs: ${jrJobs.length}`);
+      jobrightAuthExpired = !!auth?.unauthenticated;
       ingestJobs(jrJobs, runId, counts, newJobs);
     }
 
@@ -104,6 +106,12 @@ export async function runCapture({ skipSlack = false } = {}) {
           ...counts,
           newJobs,
         });
+        if (jobrightAuthExpired) {
+          await notifyJobrightLoginExpired({
+            webhookUrl: config.slackWebhookUrl,
+            runId,
+          });
+        }
       } catch (slackErr) {
         console.warn(`[slack] ${slackErr.message}`);
       }
