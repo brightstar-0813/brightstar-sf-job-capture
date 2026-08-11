@@ -2,28 +2,27 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>SF Job Capture</title>
+    <title>Salesforce Remote Job Capture</title>
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
     <header>
-      <h1>SF Job Capture</h1>
+      <h1>Salesforce Remote Job Capture</h1>
       <p id="statusLine" class="muted">Connecting…</p>
       <p id="jrLine" class="muted"></p>
     </header>
 
     <div class="actions">
-      <button type="button" id="btnRunDice">Run Dice (API)</button>
+      <button type="button" id="btnRunDice">Run capture (API)</button>
       <button type="button" id="btnRunJr">Capture JobRight</button>
       <button type="button" id="btnRefresh" class="secondary">Refresh</button>
-      <a id="btnExportDice" class="button secondary" href="#">Export Dice</a>
-      <a id="btnExportJr" class="button secondary" href="#">Export JobRight</a>
+      <a id="btnExport" class="button secondary" href="#">Export CSV</a>
     </div>
 
     <p id="message" class="message" hidden></p>
     <p class="hint muted">
-      JobRight uses this Chrome login (stay signed in on jobright.ai). Dice runs via local API / Task Scheduler.
-      Keep <code>npm start</code> running for ingest.
+      JobRight uses this Chrome login (stay signed in on jobright.ai). Full multi-site capture runs via local API / Task Scheduler.
+      Keep <code>npm start</code> running for ingest. Export is one combined <code>jobs_latest.csv</code>.
     </p>
 
     <section>

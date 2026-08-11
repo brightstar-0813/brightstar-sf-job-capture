@@ -7,7 +7,23 @@ const API = "http://127.0.0.1:3847";
 const ALARM = "jobright-capture-8h";
 const PERIOD_MINUTES = 8 * 60;
 
-function buildSearchUrl(query = "Salesforce") {
+/** Same role-family seeds as Playwright JOBRIGHT_TITLES (not title filters). */
+const DEFAULT_TITLES = [
+  "Salesforce Administrator",
+  "Salesforce Developer",
+  "Salesforce Consultant",
+  "Salesforce Business Analyst",
+  "Salesforce Architect",
+  "Salesforce Engineer",
+  "Salesforce Marketing Cloud",
+  "Salesforce CPQ",
+  "Salesforce Technical Lead",
+  "Salesforce Solution Architect",
+  "Salesforce Project Manager",
+  "Salesforce QA Engineer",
+];
+
+function buildSearchUrl(query = "Salesforce Administrator") {
   const taxonomy = encodeURIComponent(
     JSON.stringify([{ taxonomyId: "00-00-00", title: query }])
   );
@@ -19,11 +35,18 @@ function buildSearchUrl(query = "Salesforce") {
 }
 
 async function apiPost(path, body) {
-  const res = await fetch(`${API}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  let res;
+  try {
+    res = await fetch(`${API}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new Error(
+      "Local API offline — run npm start (or schedule:api) on port 3847"
+    );
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(data.error || `HTTP ${res.status}`);
@@ -31,69 +54,24 @@ async function apiPost(path, body) {
   return data;
 }
 
-async function getQuery() {
-  const stored = await chrome.storage.local.get(["searchQ"]);
-  return stored.searchQ || "Salesforce";
+async function getTitles() {
+  const stored = await chrome.storage.local.get(["jobrightTitles", "searchQ"]);
+  if (Array.isArray(stored.jobrightTitles) && stored.jobrightTitles.length) {
+    return stored.jobrightTitles.map(String).filter(Boolean);
+  }
+  if (typeof stored.jobrightTitles === "string" && stored.jobrightTitles.trim()) {
+    return stored.jobrightTitles
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  // Prefer multi-title seeds; fall back to single searchQ only if set explicitly
+  // to something other than bare Salesforce (which returns Salesforce-company jobs).
+  return DEFAULT_TITLES;
 }
 
-/**
- * Open JobRight in a tab (uses existing login cookies), scrape, ingest, close.
- */
-async function captureJobrightFromChrome() {
-  const query = await getQuery();
-  const url = buildSearchUrl(query);
-
-  const tab = await chrome.tabs.create({ url, active: false });
-  const tabId = tab.id;
-
-  try {
-    // Wait for load
-    await waitForTabComplete(tabId, 45000);
-    await sleep(4000);
-
-    // Ensure content script is present (SPA navigations)
-    try {
-      await chrome.scripting.executeScript({
-        target: { tabId },
-        files: ["jobright-content.js"],
-      });
-    } catch {
-      /* may already be injected */
-    }
-
-    await sleep(1500);
-
-    const result = await chrome.tabs.sendMessage(tabId, {
-      type: "SCRAPE_JOBRIGHT",
-      query,
-    });
-
-    if (!result?.ok) {
-      throw new Error(result?.error || "JobRight scrape failed");
-    }
-
-    const ingest = await apiPost("/api/ingest", {
-      source: "jobright",
-      trusted: true,
-      jobs: result.jobs || [],
-    });
-
-    await chrome.storage.local.set({
-      lastJobrightCapture: {
-        at: new Date().toISOString(),
-        stats: result.stats,
-        ingest,
-      },
-    });
-
-    return { ok: true, stats: result.stats, ingest };
-  } finally {
-    try {
-      if (tabId != null) await chrome.tabs.remove(tabId);
-    } catch {
-      /* ignore */
-    }
-  }
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 function waitForTabComplete(tabId, timeoutMs) {
@@ -117,12 +95,85 @@ function waitForTabComplete(tabId, timeoutMs) {
         chrome.tabs.onUpdated.removeListener(listener);
         resolve();
       }
-    });
+    }).catch(() => {});
   });
 }
 
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
+async function ensureContentScript(tabId) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["jobright-content.js"],
+    });
+  } catch {
+    /* already injected or page not ready */
+  }
+}
+
+async function scrapeTab(tabId, titles) {
+  let lastErr = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await ensureContentScript(tabId);
+    await sleep(800 + attempt * 500);
+    try {
+      const result = await chrome.tabs.sendMessage(tabId, {
+        type: "SCRAPE_JOBRIGHT",
+        titles,
+      });
+      return result;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw new Error(
+    lastErr?.message ||
+      "Could not reach JobRight content script (reload the extension and stay signed in on jobright.ai)"
+  );
+}
+
+/**
+ * Open JobRight in a tab (uses existing login cookies), scrape, ingest, close.
+ */
+async function captureJobrightFromChrome() {
+  const titles = await getTitles();
+  const url = buildSearchUrl(titles[0] || "Salesforce Administrator");
+
+  const tab = await chrome.tabs.create({ url, active: false });
+  const tabId = tab.id;
+
+  try {
+    await waitForTabComplete(tabId, 45000);
+    await sleep(4000);
+
+    const result = await scrapeTab(tabId, titles);
+
+    if (!result?.ok) {
+      throw new Error(result?.error || "JobRight scrape failed");
+    }
+
+    const ingest = await apiPost("/api/ingest", {
+      source: "jobright",
+      trusted: true,
+      jobs: result.jobs || [],
+    });
+
+    await chrome.storage.local.set({
+      lastJobrightCapture: {
+        at: new Date().toISOString(),
+        stats: result.stats,
+        ingest,
+      },
+      lastJobrightError: null,
+    });
+
+    return { ok: true, stats: result.stats, ingest };
+  } finally {
+    try {
+      if (tabId != null) await chrome.tabs.remove(tabId);
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 async function ensureAlarm() {
@@ -148,7 +199,10 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   captureJobrightFromChrome().catch((err) => {
     console.error("[jobright alarm]", err);
     chrome.storage.local.set({
-      lastJobrightError: { at: new Date().toISOString(), error: String(err.message || err) },
+      lastJobrightError: {
+        at: new Date().toISOString(),
+        error: String(err.message || err),
+      },
     });
   });
 });

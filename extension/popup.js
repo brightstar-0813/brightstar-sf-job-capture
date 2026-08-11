@@ -7,11 +7,9 @@ const messageEl = document.getElementById("message");
 const btnRunDice = document.getElementById("btnRunDice");
 const btnRunJr = document.getElementById("btnRunJr");
 const btnRefresh = document.getElementById("btnRefresh");
-const btnExportDice = document.getElementById("btnExportDice");
-const btnExportJr = document.getElementById("btnExportJr");
+const btnExport = document.getElementById("btnExport");
 
-btnExportDice.href = `${API}/api/export.csv?source=dice`;
-btnExportJr.href = `${API}/api/export.csv?source=jobright`;
+btnExport.href = `${API}/api/export.csv`;
 
 function showMessage(text, isError = false) {
   messageEl.hidden = !text;
@@ -42,7 +40,7 @@ function formatStatus(s) {
     ? `new ${last.new_count ?? 0} · updated ${last.updated_count ?? 0}`
     : "no runs yet";
   const cap = s.capturing ? " · capturing…" : "";
-  return `Total ${s.totalJobs ?? 0} (Dice ${s.diceJobs ?? 0} · JR ${s.jobrightJobs ?? 0}) · API last: ${when} (${counts})${cap}`;
+  return `Total ${s.totalJobs ?? 0} · API last: ${when} (${counts})${cap}`;
 }
 
 function renderJobs(jobs) {
@@ -72,7 +70,7 @@ function renderJobs(jobs) {
       open.href = job.url;
       open.target = "_blank";
       open.rel = "noopener";
-      open.textContent = job.source === "jobright" ? "Open JobRight" : "Open on Dice";
+      open.textContent = "Open";
       row.appendChild(open);
     }
 
@@ -104,11 +102,12 @@ async function refreshJrStatus() {
     const err = data?.lastJobrightError;
     if (last?.at) {
       const kept = last.stats?.kept ?? last.ingest?.newCount ?? "?";
-      jrLine.textContent = `JobRight ext last: ${last.at} · autofill kept ${kept}`;
+      jrLine.textContent = `JobRight ext last: ${last.at} · kept ${kept}`;
     } else if (err?.at) {
       jrLine.textContent = `JobRight ext error: ${err.error}`;
     } else {
-      jrLine.textContent = "JobRight ext: no capture yet (alarm every 8h while Chrome is open)";
+      jrLine.textContent =
+        "JobRight ext: no capture yet (alarm every 8h while Chrome is open)";
     }
   } catch {
     jrLine.textContent = "";
@@ -138,7 +137,7 @@ btnRunDice.addEventListener("click", async () => {
   btnRunDice.disabled = true;
   try {
     await api("/api/run", { method: "POST" });
-    showMessage("Dice capture started — refresh in a minute");
+    showMessage("Capture started — refresh in a minute");
     setTimeout(refresh, 3000);
   } catch (err) {
     showMessage(err.message || "Run failed", true);
@@ -150,13 +149,15 @@ btnRunJr.addEventListener("click", async () => {
   showMessage("");
   btnRunJr.disabled = true;
   try {
-    const result = await chrome.runtime.sendMessage({ type: "CAPTURE_JOBRIGHT_NOW" });
+    const result = await chrome.runtime.sendMessage({
+      type: "CAPTURE_JOBRIGHT_NOW",
+    });
     if (!result?.ok) {
       throw new Error(result?.error || "JobRight capture failed");
     }
     const kept = result.stats?.kept ?? 0;
     const neu = result.ingest?.newCount ?? 0;
-    showMessage(`JobRight: kept ${kept} autofill · ${neu} new`);
+    showMessage(`JobRight: kept ${kept} · ${neu} new`);
     await refresh();
   } catch (err) {
     showMessage(err.message || "JobRight capture failed", true);

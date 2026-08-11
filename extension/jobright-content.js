@@ -1,6 +1,6 @@
 /**
- * JobRight content script — extract APPLY WITH AUTOFILL Salesforce jobs
- * via POST /swan/recommend/search + DOM apply labels.
+ * JobRight content script — extract remote Salesforce jobs via
+ * POST /swan/recommend/search (skip LinkedIn / applied / non-remote / expired).
  *
  * Wrapped in a guarded IIFE: this file is both a manifest content_script AND
  * injected on demand via chrome.scripting.executeScript. Without the guard the
@@ -247,60 +247,85 @@ async function ensureSearch(query) {
   await new Promise((r) => setTimeout(r, 3500));
 }
 
-async function scrapeAutofillJobs(query) {
-  await ensureSearch(query);
+async function scrapeJobrightJobs(titles) {
+  const listTitles =
+    Array.isArray(titles) && titles.length
+      ? titles
+      : ["Salesforce Administrator"];
 
-  const { list, jobNum, success } = await fetchRecommendJobs(query, 50);
-  const appliedIds = await fetchAppliedJobIds();
-
-  const kept = [];
+  const byId = new Map();
+  let apiCount = 0;
   let skippedLinkedin = 0;
   let skippedApplied = 0;
   let skippedStale = 0;
   let skippedExpired = 0;
+  let appliedTotal = 0;
+  let okQueries = 0;
 
-  for (const item of list) {
-    const mapped = mapItem(item, "");
-    if (!mapped) continue;
+  // Applied list once per run (same session cookies).
+  const appliedIds = await fetchAppliedJobIds();
+  appliedTotal = appliedIds.size;
 
-    if (mapped._expired) {
-      skippedExpired += 1;
+  for (const query of listTitles) {
+    await ensureSearch(query);
+    let list = [];
+    let success = false;
+    try {
+      const api = await fetchRecommendJobs(query, 50);
+      list = api.list || [];
+      success = !!api.success;
+      if (success) okQueries += 1;
+    } catch (err) {
+      console.warn("[jobright-cs] fetch failed", query, err.message);
       continue;
     }
-    if (appliedIds.has(mapped.id)) {
-      skippedApplied += 1;
-      continue;
-    }
-    if (isLinkedinApply(mapped)) {
-      skippedLinkedin += 1;
-      continue;
-    }
-    if (!isRemoteArrangement(mapped.work_arrangement)) continue;
-    if (!isSalesforceJob(mapped)) continue;
-    if (isWithinRecentDays(mapped.date_posted, RECENT_DAYS) === false) {
-      skippedStale += 1;
-      continue;
-    }
+    apiCount += list.length;
 
-    delete mapped._applyLink;
-    delete mapped._isCompanySite;
-    delete mapped._expired;
-    kept.push(mapped);
+    for (const item of list) {
+      const mapped = mapItem(item, "");
+      if (!mapped) continue;
+      if (byId.has(mapped.id)) continue;
+
+      if (mapped._expired) {
+        skippedExpired += 1;
+        continue;
+      }
+      if (appliedIds.has(mapped.id)) {
+        skippedApplied += 1;
+        continue;
+      }
+      if (isLinkedinApply(mapped)) {
+        skippedLinkedin += 1;
+        continue;
+      }
+      if (!isRemoteArrangement(mapped.work_arrangement)) continue;
+      if (!isSalesforceJob(mapped)) continue;
+      if (isWithinRecentDays(mapped.date_posted, RECENT_DAYS) === false) {
+        skippedStale += 1;
+        continue;
+      }
+
+      delete mapped._applyLink;
+      delete mapped._isCompanySite;
+      delete mapped._expired;
+      byId.set(mapped.id, mapped);
+    }
   }
 
+  const kept = Array.from(byId.values());
   return {
     ok: true,
     jobs: kept,
     stats: {
-      apiCount: list.length,
-      jobNum: jobNum ?? null,
-      apiOk: success,
+      apiCount,
+      okQueries,
+      titles: listTitles.length,
       kept: kept.length,
       skippedLinkedin,
       skippedApplied,
       skippedStale,
       skippedExpired,
-      appliedTotal: appliedIds.size,
+      appliedTotal,
       href: location.href,
     },
   };
@@ -308,7 +333,12 @@ async function scrapeAutofillJobs(query) {
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (!msg || msg.type !== "SCRAPE_JOBRIGHT") return;
-  scrapeAutofillJobs(msg.query || "Salesforce")
+  const titles = Array.isArray(msg.titles)
+    ? msg.titles
+    : msg.query
+    ? [msg.query]
+    : null;
+  scrapeJobrightJobs(titles)
     .then((result) => sendResponse(result))
     .catch((err) => sendResponse({ ok: false, error: err.message, jobs: [] }));
   return true;
