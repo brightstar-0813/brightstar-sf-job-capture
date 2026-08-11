@@ -42,10 +42,13 @@ app.get("/api/status", (_req, res) => {
       capturing: isCaptureRunning(),
       searchQ: config.searchQ,
       cronSchedule: config.cronSchedule,
-      lastCsvDice: getMeta("last_csv_path_dice"),
-      lastCsvJobright: getMeta("last_csv_path_jobright"),
+      lastCsv: getMeta("last_csv_path"),
       captureDice: config.captureDice,
       captureJobright: config.captureJobright,
+      captureBuiltin: config.captureBuiltin,
+      captureGreenhouse: config.captureGreenhouse,
+      captureZiprecruiter: config.captureZiprecruiter,
+      captureMonster: config.captureMonster,
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -96,27 +99,19 @@ app.post("/api/ingest", async (req, res) => {
   }
 });
 
-app.get("/api/export.csv", (req, res) => {
+app.get("/api/export.csv", (_req, res) => {
   try {
-    const source = String(req.query.source || "").toLowerCase();
-    if (source !== "dice" && source !== "jobright") {
-      res
-        .status(400)
-        .send('Pass ?source=dice or ?source=jobright');
-      return;
-    }
-    const result = syncCsv(null, { timestamped: false, source });
-    const file = result.latestPath || getMeta(`last_csv_latest_path_${source}`);
+    const result = syncCsv();
+    const file = result.latestPath || getMeta("last_csv_path");
     if (!file || !fs.existsSync(file)) {
-      res.status(404).send(`No ${source} CSV yet. Run a capture first.`);
+      res.status(404).send("No CSV yet. Run a capture first.");
       return;
     }
-    const name =
-      source === "jobright"
-        ? "jobright_sf_jobs_export.csv"
-        : "dice_sf_jobs_export.csv";
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="${name}"`);
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="jobs_latest.csv"'
+    );
     fs.createReadStream(file).pipe(res);
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });

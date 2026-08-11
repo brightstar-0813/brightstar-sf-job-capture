@@ -1,6 +1,6 @@
 /**
- * Capture Salesforce jobs from Dice + JobRight (autofill only).
- * Task Scheduler / cron entrypoint.
+ * Capture Salesforce jobs from Dice, JobRight, Built In, Greenhouse,
+ * ZipRecruiter, and Monster. Task Scheduler / cron entrypoint.
  */
 
 import { chromium } from "playwright";
@@ -8,6 +8,10 @@ import { config } from "./config.js";
 import { searchDiceJobs } from "./dice/search.js";
 import { scrapeJobDetails } from "./dice/detail.js";
 import { searchJobrightJobs } from "./jobright/search.js";
+import { searchBuiltinJobs } from "./builtin/search.js";
+import { searchGreenhouseJobs } from "./greenhouse/search.js";
+import { searchZiprecruiterJobs } from "./ziprecruiter/search.js";
+import { searchMonsterJobs } from "./monster/search.js";
 import { matchesCaptureRule } from "./filter.js";
 import {
   beginRun,
@@ -50,6 +54,17 @@ function ingestJobs(jobs, runId, counts, newJobs) {
   }
 }
 
+function enabledSources() {
+  const out = [];
+  if (config.captureDice) out.push("dice");
+  if (config.captureJobright) out.push("jobright");
+  if (config.captureBuiltin) out.push("builtin");
+  if (config.captureGreenhouse) out.push("greenhouse");
+  if (config.captureZiprecruiter) out.push("ziprecruiter");
+  if (config.captureMonster) out.push("monster");
+  return out;
+}
+
 export async function runCapture({ skipSlack = false } = {}) {
   if (running) {
     return { ok: false, error: "Capture already in progress" };
@@ -60,9 +75,10 @@ export async function runCapture({ skipSlack = false } = {}) {
   const newJobs = [];
   let jobrightAuthExpired = false;
   let diceAuthExpired = false;
+  const enabled = enabledSources();
 
   console.log(
-    `[capture] run #${runId} starting (q=${config.searchQ}) dice=${config.captureDice} jobright=${config.captureJobright}`
+    `[capture] run #${runId} starting (q=${config.searchQ}) sources=${enabled.join(",")}`
   );
 
   let browser;
@@ -78,11 +94,12 @@ export async function runCapture({ skipSlack = false } = {}) {
       console.log(`[capture] dice details: ${details.length}`);
       ingestJobs(details, runId, counts, newJobs);
 
-      // Drop any previously stored jobs the user has since applied to on Dice.
       if (Array.isArray(diceApplied) && diceApplied.length) {
         const { removed } = removeJobs(diceApplied);
         if (removed > 0) {
-          console.log(`[capture] removed ${removed} already-applied dice jobs from store`);
+          console.log(
+            `[capture] removed ${removed} already-applied dice jobs from store`
+          );
         }
       }
     }
@@ -93,45 +110,64 @@ export async function runCapture({ skipSlack = false } = {}) {
       jobrightAuthExpired = !!auth?.unauthenticated;
       ingestJobs(jrJobs, runId, counts, newJobs);
 
-      // Drop any previously stored jobs the user has since applied to.
       if (Array.isArray(appliedIds) && appliedIds.length) {
         const { removed } = removeJobs(appliedIds);
         if (removed > 0) {
-          console.log(`[capture] removed ${removed} already-applied jobright jobs from store`);
+          console.log(
+            `[capture] removed ${removed} already-applied jobright jobs from store`
+          );
         }
       }
     }
 
+    if (config.captureBuiltin) {
+      const { jobs } = await searchBuiltinJobs(browser);
+      console.log(`[capture] builtin jobs: ${jobs.length}`);
+      ingestJobs(jobs, runId, counts, newJobs);
+    }
+
+    if (config.captureGreenhouse) {
+      const { jobs } = await searchGreenhouseJobs(browser);
+      console.log(`[capture] greenhouse jobs: ${jobs.length}`);
+      ingestJobs(jobs, runId, counts, newJobs);
+    }
+
+    if (config.captureZiprecruiter) {
+      const { jobs, blocked } = await searchZiprecruiterJobs(browser);
+      console.log(
+        `[capture] ziprecruiter jobs: ${jobs.length}${blocked ? " (blocked)" : ""}`
+      );
+      ingestJobs(jobs, runId, counts, newJobs);
+    }
+
+    if (config.captureMonster) {
+      const { jobs, blocked } = await searchMonsterJobs(browser);
+      console.log(
+        `[capture] monster jobs: ${jobs.length}${blocked ? " (blocked)" : ""}`
+      );
+      ingestJobs(jobs, runId, counts, newJobs);
+    }
+
     const pruned = pruneStore();
     if (pruned.removed > 0) {
-      console.log(`[capture] pruned ${pruned.removed} legacy jobs no longer matching rule`);
+      console.log(
+        `[capture] pruned ${pruned.removed} legacy jobs no longer matching rule`
+      );
     }
-    const { dice, jobright } = syncCsv();
+    const csvOut = syncCsv();
     console.log(
       `[capture] done — new=${counts.newCount} updated=${counts.updatedCount} skipped=${counts.skippedCount}`
     );
-    if (dice) {
-      console.log(`[capture] dice csv=${dice.csvPath}`);
-      console.log(`[capture] dice latest=${dice.latestPath}`);
-    }
-    if (jobright) {
-      console.log(`[capture] jobright csv=${jobright.csvPath}`);
-      console.log(`[capture] jobright latest=${jobright.latestPath}`);
-    }
+    console.log(
+      `[capture] csv=${csvOut.csvPath} (rows=${csvOut.count})`
+    );
 
     if (!skipSlack) {
       try {
-        const sources = [];
-        if (config.captureDice) sources.push("dice");
-        if (config.captureJobright) sources.push("jobright");
-        const source =
-          sources.length === 2
-            ? "dice+jobright"
-            : sources[0] || "";
         await notifyCaptureComplete({
           webhookUrl: config.slackWebhookUrl,
           runId,
-          source,
+          source: enabled.join("+"),
           ...counts,
           newJobs,
         });
@@ -158,10 +194,10 @@ export async function runCapture({ skipSlack = false } = {}) {
       runId,
       ...counts,
       newJobs,
-      dice,
-      jobright,
-      lastCsvDice: getMeta("last_csv_path_dice"),
-      lastCsvJobright: getMeta("last_csv_path_jobright"),
+      csvPath: csvOut.csvPath,
+      latestPath: csvOut.latestPath,
+      csvCount: csvOut.count,
+      lastCsv: getMeta("last_csv_path"),
     };
   } catch (err) {
     const error = err.message || String(err);

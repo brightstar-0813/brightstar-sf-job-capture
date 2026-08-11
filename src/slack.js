@@ -37,17 +37,36 @@ function truncate(text, max = 120) {
 
 function sourceLabel(source) {
   const s = String(source || "").toLowerCase();
-  if (s === "dice") return "Dice";
-  if (s === "jobright") return "JobRight";
-  if (s === "dice+jobright" || s === "both") return "Dice + JobRight";
-  return source ? String(source) : "Capture";
+  if (!s) return "Capture";
+  if (s.includes("+")) {
+    return s
+      .split("+")
+      .map((part) => sourceLabel(part.trim()))
+      .join(" + ");
+  }
+  const labels = {
+    dice: "Dice",
+    jobright: "JobRight",
+    builtin: "Built In",
+    greenhouse: "Greenhouse",
+    ziprecruiter: "ZipRecruiter",
+    monster: "Monster",
+    both: "Dice + JobRight",
+  };
+  return labels[s] || source;
 }
 
 function jobSourceTag(job) {
   const s = String(job?.source || "").toLowerCase();
-  if (s === "dice") return "[Dice] ";
-  if (s === "jobright") return "[JobRight] ";
-  return "";
+  const labels = {
+    dice: "[Dice] ",
+    jobright: "[JobRight] ",
+    builtin: "[Built In] ",
+    greenhouse: "[Greenhouse] ",
+    ziprecruiter: "[ZipRecruiter] ",
+    monster: "[Monster] ",
+  };
+  return labels[s] || "";
 }
 
 /**

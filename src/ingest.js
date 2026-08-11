@@ -60,7 +60,7 @@ export async function ingestJobsPayload(jobs, opts = {}) {
   }
 
   pruneStore();
-  const files = syncCsv(null, { timestamped: true, source });
+  const files = syncCsv();
   finishRun(runId, counts);
 
   if (!opts.skipSlack) {
@@ -83,7 +83,7 @@ export async function ingestJobsPayload(jobs, opts = {}) {
     source,
     ...counts,
     received: list.length,
-    files: files[source] || files,
-    lastCsv: getMeta(`last_csv_path_${source}`),
+    files,
+    lastCsv: getMeta("last_csv_path"),
   };
 }

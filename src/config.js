@@ -18,17 +18,12 @@ function bool(name, fallback) {
 export const config = {
   root,
   dataDir,
-  /** Fixed “latest” copies per source */
-  csvLatestDice: process.env.CSV_LATEST_DICE || "dice_jobs_latest.csv",
-  csvLatestJobright: process.env.CSV_LATEST_JOBRIGHT || "jobright_jobs_latest.csv",
-  csvPrefixDice: process.env.CSV_PREFIX_DICE || "dice_sf_jobs",
-  csvPrefixJobright: process.env.CSV_PREFIX_JOBRIGHT || "jobright_sf_jobs",
-  /** @deprecated combined latest — prefer per-source */
+  /** Single combined CSV with latest jobs from all sources. */
+  csvLatestFile: process.env.CSV_LATEST_FILE || "jobs_latest.csv",
   csvLatestPath: path.join(
     dataDir,
-    process.env.CSV_LATEST_FILE || "dice_jobs_latest.csv"
+    process.env.CSV_LATEST_FILE || "jobs_latest.csv"
   ),
-  csvPrefix: process.env.CSV_PREFIX_DICE || "dice_sf_jobs",
   storePath: path.join(dataDir, process.env.STORE_FILE || "store.json"),
   dbPath: path.join(dataDir, process.env.STORE_FILE || "store.json"),
   slackWebhookUrl: String(process.env.SLACK_WEBHOOK_URL || "").trim(),
@@ -44,6 +39,74 @@ export const config = {
   apiBase: `http://127.0.0.1:${Number(process.env.PORT || 3847)}`,
   captureDice: bool("CAPTURE_DICE", true),
   captureJobright: bool("CAPTURE_JOBRIGHT", true),
+  captureBuiltin: bool("CAPTURE_BUILTIN", true),
+  captureGreenhouse: bool("CAPTURE_GREENHOUSE", true),
+  /** Often Cloudflare-blocked in headless — on by default but may yield 0. */
+  captureZiprecruiter: bool("CAPTURE_ZIPRECRUITER", true),
+  /** Often empty/blocked in headless — on by default but may yield 0. */
+  captureMonster: bool("CAPTURE_MONSTER", true),
+  /**
+   * Greenhouse board tokens (boards.greenhouse.io/{token}). No global search —
+   * we poll these company boards and keep remote Salesforce matches.
+   */
+  greenhouseBoards: String(
+    process.env.GREENHOUSE_BOARDS ||
+      [
+        "affirm",
+        "stripe",
+        "datadog",
+        "notion",
+        "figma",
+        "hubspot",
+        "twilio",
+        "snowflakecomputing",
+        "gitlab",
+        "cloudflare",
+        "doordash",
+        "instacart",
+        "asana",
+        "coinbase",
+        "gusto",
+        "rippling",
+        "ramp",
+        "brex",
+        "airbnb",
+        "dropbox",
+        "boxinc",
+        "zendesk",
+        "plaid",
+        "calendly",
+        "canva",
+        "discord",
+        "robinhood",
+        "square",
+        "block",
+        "okta",
+        "hashicorp",
+        "databricks",
+        "mongodb",
+        "elastic",
+        "confluent",
+        "docusign",
+        "smartsheet",
+        "qualtrics",
+        "surveymonkey",
+        "duolingo",
+        "grammarly",
+        "coursera",
+        "udemy",
+        "khanacademy",
+        "vanta",
+        "mercury",
+        "flexport",
+        "shippo",
+        "faire",
+        "whatnot",
+      ].join(",")
+  )
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
   jobrightAuthPath: path.resolve(
     root,
     process.env.JOBRIGHT_AUTH_PATH || path.join("download", "jobright-auth.json")
@@ -84,6 +147,16 @@ export const config = {
     .map((s) => s.trim())
     .filter(Boolean),
 };
+
+/** Known capture source ids (used for status counts). */
+export const SOURCE_IDS = [
+  "dice",
+  "jobright",
+  "builtin",
+  "greenhouse",
+  "ziprecruiter",
+  "monster",
+];
 
 export const CSV_HEADERS = [
   "id",

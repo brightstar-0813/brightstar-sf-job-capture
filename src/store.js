@@ -1,8 +1,7 @@
 import fs from "fs";
 import path from "path";
-import { config, CSV_HEADERS } from "./config.js";
+import { config, CSV_HEADERS, SOURCE_IDS } from "./config.js";
 import { writeCsv } from "./csv.js";
-import { resolveTimestampedCsvPath } from "./paths.js";
 import { matchesCaptureRule, isRecentJob } from "./filter.js";
 
 /**
@@ -116,18 +115,21 @@ export function getStatus() {
   const s = load();
   const jobs = Object.values(s.jobs);
   const lastRun = getLastRun();
-  const diceCount = jobs.filter((j) => j.source === "dice").length;
-  const jrCount = jobs.filter((j) => j.source === "jobright").length;
+  const bySource = {};
+  for (const id of SOURCE_IDS) {
+    bySource[`${id}Jobs`] = jobs.filter(
+      (j) => String(j.source || "").toLowerCase() === id
+    ).length;
+  }
   return {
     totalJobs: jobs.length,
-    diceJobs: diceCount,
-    jobrightJobs: jrCount,
+    ...bySource,
+    diceJobs: bySource.diceJobs,
+    jobrightJobs: bySource.jobrightJobs,
     newJobs: jobs.filter((j) => j.status === "new").length,
     lastRun: lastRun || null,
-    csvPathDice: getMeta("last_csv_path_dice"),
-    csvPathJobright: getMeta("last_csv_path_jobright"),
-    latestCsvDice: path.join(config.dataDir, config.csvLatestDice),
-    latestCsvJobright: path.join(config.dataDir, config.csvLatestJobright),
+    csvPath: getMeta("last_csv_path"),
+    latestCsv: config.csvLatestPath,
     apiBase: config.apiBase,
   };
 }
@@ -273,68 +275,25 @@ export function removeJobs(ids) {
 }
 
 /**
- * Write separate CSVs for Dice and JobRight (timestamped + latest).
- * @returns {{
- *   dice: { csvPath: string, latestPath: string },
- *   jobright: { csvPath: string, latestPath: string },
- *   sources: string[]
- * }}
+ * Write one combined CSV with the latest qualifying jobs from all sources.
+ * Overwrites `jobs_latest.csv` (or CSV_LATEST_FILE) each run.
+ * @returns {{ csvPath: string, latestPath: string, count: number }}
  */
-export function syncCsv(rows = null, { timestamped = true, source = null } = {}) {
-  const writeOne = (src, list) => {
-    // Safety net: never emit jobs that violate the capture rule or the recency
-    // window, even if legacy rows linger in the store.
-    const clean = (list || []).filter((j) => matchesOutputRule(j));
-    const prefix =
-      src === "jobright" ? config.csvPrefixJobright : config.csvPrefixDice;
-    const latestName =
-      src === "jobright" ? config.csvLatestJobright : config.csvLatestDice;
-    const latestPath = path.join(config.dataDir, latestName);
-    writeCsv(latestPath, clean);
-
-    let csvPath = latestPath;
-    if (timestamped) {
-      csvPath = resolveTimestampedCsvPath(config.dataDir, prefix);
-      writeCsv(csvPath, clean);
-    }
-    setMeta(`last_csv_path_${src}`, csvPath);
-    setMeta(`last_csv_latest_path_${src}`, latestPath);
-    return { csvPath, latestPath };
-  };
-
-  if (source) {
-    const src = String(source).toLowerCase();
-    const list = (rows || jobsBySource(src)).filter(
-      (j) => String(j.source || "").toLowerCase() === src
-    );
-    const out = writeOne(src, list);
-    return {
-      [src]: out,
-      sources: [src],
-      csvPath: out.csvPath,
-      latestPath: out.latestPath,
-    };
-  }
-
+export function syncCsv(rows = null) {
   const all = rows || allJobs();
-  const dice = all.filter((j) => String(j.source || "").toLowerCase() === "dice");
-  const jobright = all.filter(
-    (j) => String(j.source || "").toLowerCase() === "jobright"
+  const clean = (all || []).filter((j) => matchesOutputRule(j));
+  // Newest first within the combined file.
+  clean.sort((a, b) =>
+    String(b.last_seen_at || b.date_posted || "").localeCompare(
+      String(a.last_seen_at || a.date_posted || "")
+    )
   );
 
-  const diceOut = writeOne("dice", dice);
-  const jrOut = writeOne("jobright", jobright);
-
-  setMeta("last_csv_path", diceOut.csvPath);
-  setMeta("last_csv_latest_path", diceOut.latestPath);
-
-  return {
-    dice: diceOut,
-    jobright: jrOut,
-    sources: ["dice", "jobright"],
-    csvPath: diceOut.csvPath,
-    latestPath: diceOut.latestPath,
-  };
+  const latestPath = config.csvLatestPath;
+  writeCsv(latestPath, clean);
+  setMeta("last_csv_path", latestPath);
+  setMeta("last_csv_latest_path", latestPath);
+  return { csvPath: latestPath, latestPath, count: clean.length };
 }
 
 export function closeStore() {

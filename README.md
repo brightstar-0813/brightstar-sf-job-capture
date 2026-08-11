@@ -1,18 +1,15 @@
-# Dice + JobRight Salesforce Job Capture
+# Salesforce Job Capture (multi-source)
 
-Capture **Salesforce** jobs from Dice and JobRight every 8 hours, append/dedupe locally, write a **dated CSV**, and Slack-notify on new jobs.
+Capture **remote Salesforce** jobs from Dice, JobRight, Built In, Greenhouse, ZipRecruiter, and Monster every 8 hours, append/dedupe locally, write **dated CSVs**, and Slack-notify on new jobs.
 
 ## What gets saved
 
-Each run writes **separate** files per source:
+Each run overwrites **one** combined CSV with the latest qualifying jobs from all sources:
 
-- `download/dice_sf_jobs_YYYY-MM-DD_HHmmss.csv`
-- `download/dice_jobs_latest.csv`
-- `download/jobright_sf_jobs_YYYY-MM-DD_HHmmss.csv`
-- `download/jobright_jobs_latest.csv`
+- `download/jobs_latest.csv` — all sources together (`source` column marks Dice / JobRight / Built In / …)
 - `download/store.json` — shared dedupe history
 
-Filter (applied to both Dice and JobRight):
+Filter (applied to all sources):
 
 - **Keep:** title or JD contains the word `Salesforce`, the job is **remote only** (not hybrid/on-site), and it was **posted within the last `RECENT_DAYS` days** (default 3).
 - **Skip:** jobs at the **Salesforce** company itself, **hybrid/on-site** roles, **LinkedIn** apply/redirect links, **expired / no-longer-available** postings (Dice banner text; JobRight `isDeleted`/`hiddenJob`), and postings **older than `RECENT_DAYS`** (they also age out of the store/CSVs on each run).
@@ -20,10 +17,14 @@ Filter (applied to both Dice and JobRight):
 
 ## How automation is split (recommended)
 
-| Source | How it runs automatically |
-|--------|---------------------------|
-| **Dice** | Windows Task Scheduler (`npm run schedule:install`) — no login needed to capture; an optional saved login lets it skip already-applied jobs |
-| **JobRight** | **Chrome extension** in your logged-in browser — every 8 hours while Chrome is open |
+| Source | How it runs | Notes |
+|--------|-------------|-------|
+| **Dice** | Windows Task Scheduler | Optional login for applied-job exclusion |
+| **JobRight** | Scheduler + saved Playwright login (or Chrome extension) | Needs `npm run jobright:login` |
+| **Built In** | Scheduler (Playwright) | Reliable; remote + keyword search |
+| **Greenhouse** | Scheduler (public board API) | No login; polls curated company boards (`GREENHOUSE_BOARDS`) |
+| **ZipRecruiter** | Scheduler (Playwright) | Often Cloudflare-blocked in headless — may return 0 |
+| **Monster** | Scheduler (Playwright) | Often empty/blocked in headless — may return 0 |
 
 ### Optional: skip already-applied Dice jobs
 
