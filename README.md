@@ -14,8 +14,8 @@ Each run writes **separate** files per source:
 
 Filter (applied to both Dice and JobRight):
 
-- **Keep:** title or JD contains the word `Salesforce`, the job is **remote**, and it was **posted within the last `RECENT_DAYS` days** (default 3).
-- **Skip:** jobs at the **Salesforce** company itself, **hybrid/on-site** roles, **LinkedIn** apply/redirect links, and postings **older than `RECENT_DAYS`** (they also age out of the store/CSVs on each run).
+- **Keep:** title or JD contains the word `Salesforce`, the job is **remote only** (not hybrid/on-site), and it was **posted within the last `RECENT_DAYS` days** (default 3).
+- **Skip:** jobs at the **Salesforce** company itself, **hybrid/on-site** roles, **LinkedIn** apply/redirect links, **expired / no-longer-available** postings (Dice banner text; JobRight `isDeleted`/`hiddenJob`), and postings **older than `RECENT_DAYS`** (they also age out of the store/CSVs on each run).
 - **Skip (already applied):** jobs you've **already applied to** — JobRight via `POST /swan/job/applied/jobs-v3`, and **Dice** via the *My Jobs → Applied* tab (needs a saved Dice login, see below). Applied jobs are skipped during capture and removed from the local store each run.
 
 ## How automation is split (recommended)

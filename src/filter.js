@@ -23,15 +23,18 @@ export function isSalesforceEmployer(organization) {
 }
 
 /**
- * Remote-only: keep fully remote roles, drop hybrid and on-site. An empty value
- * is treated as remote because the Dice search is already restricted to remote
- * (its detail pages don't expose a workplace-type field).
+ * Remote-only: keep fully remote roles, drop hybrid and on-site.
+ * An empty value is treated as remote only because Dice search is already
+ * restricted to Remote (detail pages often omit workplace type). Any explicit
+ * hybrid / on-site / in-office label is rejected; otherwise the value must
+ * mention "remote".
  */
 export function isRemoteArrangement(workArrangement) {
-  const w = String(workArrangement || "").toLowerCase();
+  const w = String(workArrangement || "").toLowerCase().trim();
+  if (!w) return true;
   if (/hybrid/.test(w)) return false;
   if (/on[-\s]?site|onsite|in[-\s]?office|in[-\s]?person/.test(w)) return false;
-  return true;
+  return /\bremote\b/.test(w);
 }
 
 /**

@@ -29,10 +29,11 @@ function isSalesforceEmployer(organization) {
 }
 
 function isRemoteArrangement(workArrangement) {
-  const w = String(workArrangement || "").toLowerCase();
+  const w = String(workArrangement || "").toLowerCase().trim();
+  if (!w) return true;
   if (/hybrid/.test(w)) return false;
   if (/on[-\s]?site|onsite|in[-\s]?office|in[-\s]?person/.test(w)) return false;
-  return true;
+  return /\bremote\b/.test(w);
 }
 
 // Only keep jobs posted within this many days (mirror of RECENT_DAYS).
@@ -104,12 +105,14 @@ function mapItem(item, applyLabel) {
   const datePosted = postedAbs
     ? postedAbs.toISOString().slice(0, 10)
     : String(jr.publishTime || jr.publishTimeDesc || "");
+  const workArrangement =
+    jr.workModel || (jr.isRemote === true ? "Remote" : "Onsite");
   return {
     id: `jobright_${jr.jobId}`,
     title: jr.jobTitle || jr.jobNlpTitle || "",
     organization: company.companyName || "",
     location: jr.jobLocation || (jr.jobLocations || [])[0] || "",
-    work_arrangement: jr.workModel || (jr.isRemote ? "Remote" : ""),
+    work_arrangement: workArrangement,
     remote_restricted_to: "",
     experience_level: jr.jobSeniority || "",
     employment_type: jr.employmentType || "",
@@ -126,6 +129,7 @@ function mapItem(item, applyLabel) {
     jobtargetEasyapply: jr.jobtargetEasyapply === true,
     _applyLink: String(jr.applyLink || jr.originalUrl || ""),
     _isCompanySite: jr.isCompanySiteLink === true,
+    _expired: jr.isDeleted === true || jr.hiddenJob === true,
   };
 }
 
@@ -149,7 +153,7 @@ async function fetchRecommendJobs(query, count = 50) {
     country: "US",
     jobTypes: [],
     seniority: [],
-    workModel: [],
+    workModel: ["Remote"],
     locations: [],
     companies: [],
     isH1BOnly: false,
@@ -253,11 +257,16 @@ async function scrapeAutofillJobs(query) {
   let skippedLinkedin = 0;
   let skippedApplied = 0;
   let skippedStale = 0;
+  let skippedExpired = 0;
 
   for (const item of list) {
     const mapped = mapItem(item, "");
     if (!mapped) continue;
 
+    if (mapped._expired) {
+      skippedExpired += 1;
+      continue;
+    }
     if (appliedIds.has(mapped.id)) {
       skippedApplied += 1;
       continue;
@@ -275,6 +284,7 @@ async function scrapeAutofillJobs(query) {
 
     delete mapped._applyLink;
     delete mapped._isCompanySite;
+    delete mapped._expired;
     kept.push(mapped);
   }
 
@@ -289,6 +299,7 @@ async function scrapeAutofillJobs(query) {
       skippedLinkedin,
       skippedApplied,
       skippedStale,
+      skippedExpired,
       appliedTotal: appliedIds.size,
       href: location.href,
     },

@@ -77,12 +77,17 @@ function mapApiJob(item) {
     ? postedAbs.toISOString().slice(0, 10)
     : String(jr.publishTime || jr.publishTimeDesc || "");
 
+  // Prefer JobRight's workModel; fall back to isRemote. Unknown / non-remote
+  // defaults to Onsite so the remote-only filter rejects it.
+  const workArrangement =
+    jr.workModel || (jr.isRemote === true ? "Remote" : "Onsite");
+
   return {
     id,
     title: jr.jobTitle || jr.jobNlpTitle || "",
     organization: company.companyName || "",
     location: jr.jobLocation || (jr.jobLocations || [])[0] || "",
-    work_arrangement: jr.workModel || (jr.isRemote ? "Remote" : ""),
+    work_arrangement: workArrangement,
     remote_restricted_to: "",
     experience_level: jr.jobSeniority || "",
     employment_type: jr.employmentType || "",
@@ -98,6 +103,7 @@ function mapApiJob(item) {
     _easyApply: jr.jobtargetEasyapply === true,
     _applyLink: String(jr.applyLink || jr.originalUrl || ""),
     _isCompanySite: jr.isCompanySiteLink === true,
+    _expired: jr.isDeleted === true || jr.hiddenJob === true,
   };
 }
 
@@ -132,7 +138,7 @@ async function fetchRecommendJobs(
         country: "US",
         jobTypes: [],
         seniority: [],
-        workModel: [],
+        workModel: ["Remote"],
         locations: [],
         companies: [],
         isH1BOnly: false,
@@ -250,6 +256,7 @@ export async function searchJobrightJobs(browser) {
   let nonSalesforceSkipped = 0;
   let appliedSkipped = 0;
   let staleSkipped = 0;
+  let expiredSkipped = 0;
   let apiCount = 0;
   let queryOkCount = 0;
   let appliedIds = new Set();
@@ -299,6 +306,10 @@ export async function searchJobrightJobs(browser) {
         if (seen.has(mapped.id)) continue;
         seen.add(mapped.id);
 
+        if (mapped._expired) {
+          expiredSkipped += 1;
+          continue;
+        }
         if (appliedIds.has(mapped.id)) {
           appliedSkipped += 1;
           continue;
@@ -327,6 +338,7 @@ export async function searchJobrightJobs(browser) {
         delete mapped._easyApply;
         delete mapped._applyLink;
         delete mapped._isCompanySite;
+        delete mapped._expired;
         all.push(mapped);
       }
     }
@@ -344,7 +356,8 @@ export async function searchJobrightJobs(browser) {
       ` (titles=${titles.length}, api=${apiCount}, okQueries=${queryOkCount}/${titles.length},` +
       ` skipped LinkedIn=${linkedinSkipped}, skipped Salesforce-employer=${employerSkipped},` +
       ` skipped non-remote=${nonRemoteSkipped}, skipped non-Salesforce=${nonSalesforceSkipped},` +
-      ` skipped already-applied=${appliedSkipped}, skipped stale(>${config.recentDays}d)=${staleSkipped})`
+      ` skipped already-applied=${appliedSkipped}, skipped expired=${expiredSkipped},` +
+      ` skipped stale(>${config.recentDays}d)=${staleSkipped})`
   );
   if (unauthenticated) {
     console.warn(
