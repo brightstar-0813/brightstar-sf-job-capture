@@ -1,11 +1,15 @@
-# Register a Windows Scheduled Task to run capture every 8 hours.
+# Register a Windows Scheduled Task to run capture daily at 5:00 AM and 5:00 PM (local time).
 #   npm run schedule:install
 # or:
 #   powershell -ExecutionPolicy Bypass -File scripts\install-scheduler.ps1
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
-$taskName = "DiceJobCapture_Every8Hours"
+$taskName = "DiceJobCapture_5am5pm"
+$legacyTaskNames = @(
+  "DiceJobCapture_Every8Hours",
+  "DiceJobCapture_Every12Hours"
+)
 
 $nodeCandidates = @(
   "$env:LOCALAPPDATA\nvm\v20.12.2\node.exe",
@@ -28,11 +32,8 @@ $action = New-ScheduledTaskAction `
   -Argument "src\capture.js" `
   -WorkingDirectory $root
 
-# Start in 2 minutes, then every 8 hours for ~10 years (Windows rejects infinite MaxValue)
-$start = (Get-Date).AddMinutes(2)
-$trigger = New-ScheduledTaskTrigger -Once -At $start `
-  -RepetitionInterval (New-TimeSpan -Hours 8) `
-  -RepetitionDuration (New-TimeSpan -Days 3650)
+$triggerAm = New-ScheduledTaskTrigger -Daily -At "5:00AM"
+$triggerPm = New-ScheduledTaskTrigger -Daily -At "5:00PM"
 
 $settings = New-ScheduledTaskSettingsSet `
   -AllowStartIfOnBatteries `
@@ -41,7 +42,6 @@ $settings = New-ScheduledTaskSettingsSet `
   -MultipleInstances IgnoreNew
 
 # Run whether the user is logged on or not (S4U = no stored password needed).
-# The task runs in the background under this account whenever the system is on.
 $principal = New-ScheduledTaskPrincipal `
   -UserId "$env:USERDOMAIN\$env:USERNAME" `
   -LogonType S4U `
@@ -50,12 +50,20 @@ $principal = New-ScheduledTaskPrincipal `
 Register-ScheduledTask `
   -TaskName $taskName `
   -Action $action `
-  -Trigger $trigger `
+  -Trigger @($triggerAm, $triggerPm) `
   -Settings $settings `
   -Principal $principal `
-  -Description "Capture Salesforce jobs from Dice + JobRight (APPLY WITH AUTOFILL only) every 8 hours" `
+  -Description "Capture remote Salesforce jobs daily at 5:00 AM and 5:00 PM" `
   -Force | Out-Null
 
-Write-Host "Scheduled task '$taskName' installed (starts ~$start, every 8 hours, runs whether logged on or not)."
+foreach ($legacyTaskName in $legacyTaskNames) {
+  $legacy = Get-ScheduledTask -TaskName $legacyTaskName -ErrorAction SilentlyContinue
+  if ($legacy) {
+    Unregister-ScheduledTask -TaskName $legacyTaskName -Confirm:$false
+    Write-Host "Removed legacy task '$legacyTaskName'."
+  }
+}
+
+Write-Host "Scheduled task '$taskName' installed (daily 5:00 AM and 5:00 PM local, runs whether logged on or not)."
 Write-Host "Run now:  Start-ScheduledTask -TaskName '$taskName'"
 Write-Host "JobRight: use Chrome extension + API autostart (npm run schedule:api)"

@@ -1,11 +1,13 @@
 /**
- * Background: schedule JobRight scrape every 8 hours using the user's
- * logged-in Chrome session (no Playwright login file needed).
+ * Background: schedule JobRight scrape daily at 5:00 AM and 5:00 PM (local time)
+ * using the user's logged-in Chrome session (no Playwright login file needed).
  */
 
 const API = "http://127.0.0.1:3847";
-const ALARM = "jobright-capture-8h";
-const PERIOD_MINUTES = 8 * 60;
+const ALARM = "jobright-capture-daily";
+const LEGACY_ALARMS = ["jobright-capture-8h", "jobright-capture-12h"];
+/** Local hours (24h) when JobRight capture runs — 5 AM and 5 PM. */
+const RUN_HOURS = [5, 17];
 
 /** Same role-family seeds as Playwright JOBRIGHT_TITLES (not title filters). */
 const DEFAULT_TITLES = [
@@ -194,14 +196,36 @@ async function captureJobrightFromChrome() {
   }
 }
 
-async function ensureAlarm() {
-  const existing = await chrome.alarms.get(ALARM);
-  if (!existing) {
-    chrome.alarms.create(ALARM, {
-      delayInMinutes: 1,
-      periodInMinutes: PERIOD_MINUTES,
-    });
+function nextRunMs(from = new Date()) {
+  const now = from.getTime();
+  for (let dayOffset = 0; dayOffset <= 1; dayOffset += 1) {
+    for (const hour of RUN_HOURS) {
+      const d = new Date(from);
+      d.setDate(d.getDate() + dayOffset);
+      d.setHours(hour, 0, 0, 0);
+      if (d.getTime() > now + 60_000) return d.getTime();
+    }
   }
+  const fallback = new Date(from);
+  fallback.setDate(fallback.getDate() + 1);
+  fallback.setHours(RUN_HOURS[0], 0, 0, 0);
+  return fallback.getTime();
+}
+
+async function ensureAlarm() {
+  for (const name of LEGACY_ALARMS) {
+    await chrome.alarms.clear(name);
+  }
+  const when = nextRunMs();
+  const existing = await chrome.alarms.get(ALARM);
+  if (!existing || Math.abs((existing.scheduledTime || 0) - when) > 60_000) {
+    await chrome.alarms.clear(ALARM);
+    chrome.alarms.create(ALARM, { when });
+  }
+}
+
+function scheduleNextAlarm() {
+  chrome.alarms.create(ALARM, { when: nextRunMs() });
 }
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -214,15 +238,19 @@ chrome.runtime.onStartup.addListener(() => {
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== ALARM) return;
-  captureJobrightFromChrome().catch((err) => {
-    console.error("[jobright alarm]", err);
-    chrome.storage.local.set({
-      lastJobrightError: {
-        at: new Date().toISOString(),
-        error: String(err.message || err),
-      },
+  captureJobrightFromChrome()
+    .catch((err) => {
+      console.error("[jobright alarm]", err);
+      chrome.storage.local.set({
+        lastJobrightError: {
+          at: new Date().toISOString(),
+          error: String(err.message || err),
+        },
+      });
+    })
+    .finally(() => {
+      scheduleNextAlarm();
     });
-  });
 });
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {

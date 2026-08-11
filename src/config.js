@@ -35,7 +35,7 @@ export const config = {
   pageSize: Math.max(1, Math.min(100, Number(process.env.PAGE_SIZE || 20))),
   headless: bool("HEADLESS", true),
   delayMs: Math.max(0, Number(process.env.DELAY_MS || 800)),
-  cronSchedule: process.env.CRON_SCHEDULE || "0 */8 * * *",
+  cronSchedule: process.env.CRON_SCHEDULE || "0 5,17 * * *",
   apiBase: `http://127.0.0.1:${Number(process.env.PORT || 3847)}`,
   captureDice: bool("CAPTURE_DICE", true),
   captureJobright: bool("CAPTURE_JOBRIGHT", true),

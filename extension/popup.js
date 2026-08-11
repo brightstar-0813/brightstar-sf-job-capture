@@ -107,7 +107,7 @@ async function refreshJrStatus() {
       jrLine.textContent = `JobRight ext error: ${err.error}`;
     } else {
       jrLine.textContent =
-        "JobRight ext: no capture yet (alarm every 8h while Chrome is open)";
+        "JobRight ext: no capture yet (runs daily at 5 AM and 5 PM while Chrome is open)";
     }
   } catch {
     jrLine.textContent = "";

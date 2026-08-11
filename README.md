@@ -1,6 +1,6 @@
 # Salesforce Job Capture (multi-source)
 
-Capture **remote Salesforce** jobs from Dice, JobRight, Built In, Greenhouse, ZipRecruiter, and Monster every 8 hours, append/dedupe locally, write **dated CSVs**, and Slack-notify on new jobs.
+Capture **remote Salesforce** jobs from Dice, JobRight, Built In, Greenhouse, ZipRecruiter, and Monster **twice daily (5:00 AM and 5:00 PM local time)**, append/dedupe locally, write **dated CSVs**, and Slack-notify on new jobs.
 
 ## What gets saved
 
@@ -47,7 +47,7 @@ Autofill buttons only show when you are signed in. The extension opens JobRight 
 3. Load this repo’s `extension/` (unpacked)  
 4. Click **Capture JobRight** once to verify
 
-## Fully automatic every 8 hours (Windows)
+## Fully automatic — daily at 5 AM and 5 PM (Windows)
 
 Install **both** scheduled tasks (Dice capture + API at logon):
 
@@ -57,7 +57,7 @@ npm run schedule:install
 
 | Task | What it does |
 |------|----------------|
-| `DiceJobCapture_Every8Hours` | Runs Dice capture every 8 hours |
+| `DiceJobCapture_5am5pm` | Runs capture daily at **5:00 AM** and **5:00 PM** (local time) |
 | `DiceJobCapture_API_AtLogon` | Starts `node src/server.js` when you log in (so JobRight extension can ingest) |
 
 You do **not** need to open Cursor or type `npm start` after that — just reboot/login once, stay signed in to JobRight in Chrome, and keep the extension loaded.
@@ -65,9 +65,9 @@ You do **not** need to open Cursor or type `npm start` after that — just reboo
 Optional checks:
 
 ```powershell
-Get-ScheduledTask -TaskName DiceJobCapture_Every8Hours, DiceJobCapture_API_AtLogon
+Get-ScheduledTask -TaskName DiceJobCapture_5am5pm, DiceJobCapture_API_AtLogon
 Start-ScheduledTask -TaskName DiceJobCapture_API_AtLogon
-Start-ScheduledTask -TaskName DiceJobCapture_Every8Hours
+Start-ScheduledTask -TaskName DiceJobCapture_5am5pm
 ```
 
 Individual installs: `npm run schedule:dice` or `npm run schedule:api`.

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Salesforce Remote Job Capture",
-  "description": "Trigger local capture + scrape JobRight from your logged-in Chrome session every 8 hours. Jobs land in one combined jobs_latest.csv.",
-  "version": "1.2.3",
+  "description": "Trigger local capture + scrape JobRight from your logged-in Chrome session daily at 5 AM and 5 PM. Jobs land in one combined jobs_latest.csv.",
+  "version": "1.2.5",
   "permissions": ["storage", "alarms", "tabs", "scripting"],
   "host_permissions": [
     "http://127.0.0.1:3847/*",
