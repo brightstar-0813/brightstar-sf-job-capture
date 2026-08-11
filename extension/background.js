@@ -117,9 +117,27 @@ async function scrapeTab(tabId, titles) {
     await sleep(800 + attempt * 500);
     try {
       const result = await chrome.tabs.sendMessage(tabId, {
-        type: "SCRAPE_JOBRIGHT",
+        // v3+ — old content scripts ignored this type (they only handled SCRAPE_JOBRIGHT)
+        type: "SCRAPE_JOBRIGHT_V3",
         titles,
       });
+      // Stale CS (pre-v3) still throws recommend/search HTTP 400 via ok:false.
+      if (result && result.ok === false && /HTTP 400/i.test(String(result.error || ""))) {
+        lastErr = new Error(result.error);
+        // Force re-inject: clear version so next ensureContentScript upgrades.
+        await chrome.scripting.executeScript({
+          target: { tabId },
+          func: () => {
+            try {
+              delete window.__SF_JOBRIGHT_CS_VERSION__;
+              delete window.__SF_JOBRIGHT_CS_LOADED__;
+            } catch {
+              /* ignore */
+            }
+          },
+        });
+        continue;
+      }
       return result;
     } catch (err) {
       lastErr = err;

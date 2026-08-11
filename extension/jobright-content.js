@@ -9,7 +9,18 @@
  */
 
 (function () {
-  if (window.__SF_JOBRIGHT_CS_LOADED__) return;
+  // Bump when scrape/API body changes so executeScript can replace a stale
+  // injection (old code used workModel: ["Remote"] → HTTP 400).
+  const CS_VERSION = 3;
+  if (window.__SF_JOBRIGHT_CS_VERSION__ === CS_VERSION) return;
+  if (typeof window.__SF_JOBRIGHT_CS_LISTENER__ === "function") {
+    try {
+      chrome.runtime.onMessage.removeListener(window.__SF_JOBRIGHT_CS_LISTENER__);
+    } catch {
+      /* ignore */
+    }
+  }
+  window.__SF_JOBRIGHT_CS_VERSION__ = CS_VERSION;
   window.__SF_JOBRIGHT_CS_LOADED__ = true;
 
 const SALESFORCE_RE = /\bSalesforce\b/i;
@@ -316,6 +327,22 @@ async function scrapeJobrightJobs(titles) {
   }
 
   const kept = Array.from(byId.values());
+  if (okQueries === 0 && listTitles.length > 0) {
+    return {
+      ok: false,
+      error:
+        "JobRight recommend/search failed for all titles (check login / API body)",
+      jobs: [],
+      stats: {
+        apiCount,
+        okQueries,
+        titles: listTitles.length,
+        kept: 0,
+        csVersion: CS_VERSION,
+        href: location.href,
+      },
+    };
+  }
   return {
     ok: true,
     jobs: kept,
@@ -329,13 +356,16 @@ async function scrapeJobrightJobs(titles) {
       skippedStale,
       skippedExpired,
       appliedTotal,
+      csVersion: CS_VERSION,
       href: location.href,
     },
   };
 }
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (!msg || msg.type !== "SCRAPE_JOBRIGHT") return;
+function onScrapeMessage(msg, _sender, sendResponse) {
+  if (!msg || (msg.type !== "SCRAPE_JOBRIGHT_V3" && msg.type !== "SCRAPE_JOBRIGHT")) {
+    return;
+  }
   const titles = Array.isArray(msg.titles)
     ? msg.titles
     : msg.query
@@ -345,5 +375,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     .then((result) => sendResponse(result))
     .catch((err) => sendResponse({ ok: false, error: err.message, jobs: [] }));
   return true;
-});
+}
+
+window.__SF_JOBRIGHT_CS_LISTENER__ = onScrapeMessage;
+chrome.runtime.onMessage.addListener(onScrapeMessage);
 })();
