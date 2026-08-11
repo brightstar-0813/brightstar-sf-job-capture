@@ -153,7 +153,8 @@ async function fetchRecommendJobs(query, count = 50) {
     country: "US",
     jobTypes: [],
     seniority: [],
-    workModel: ["Remote"],
+    // JobRight expects integer enums: 1=Onsite, 2=Remote, 3=Hybrid
+    workModel: [2],
     locations: [],
     companies: [],
     isH1BOnly: false,
@@ -169,6 +170,7 @@ async function fetchRecommendJobs(query, count = 50) {
     excludeCompanyCategory: [],
     excludeSecurityClearance: false,
     excludeUsCitizen: false,
+    daysAgo: RECENT_DAYS,
     refresh: true,
     position: 0,
     sortCondition: 0,
@@ -181,6 +183,7 @@ async function fetchRecommendJobs(query, count = 50) {
     headers: {
       "content-type": "application/json",
       accept: "application/json, text/plain, */*",
+      "x-client-type": "web",
     },
     body: JSON.stringify(body),
     credentials: "include",
