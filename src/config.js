@@ -158,6 +158,16 @@ export const SOURCE_IDS = [
   "monster",
 ];
 
+/** CSV row order — JobRight last so those jobs sit at the bottom of jobs_latest.csv. */
+export const CSV_SOURCE_ORDER = [
+  "dice",
+  "builtin",
+  "greenhouse",
+  "ziprecruiter",
+  "monster",
+  "jobright",
+];
+
 export const CSV_HEADERS = [
   "id",
   "title",

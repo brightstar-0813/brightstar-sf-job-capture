@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { config, CSV_HEADERS, SOURCE_IDS } from "./config.js";
+import { config, CSV_HEADERS, SOURCE_IDS, CSV_SOURCE_ORDER } from "./config.js";
 import { writeCsv } from "./csv.js";
 import { matchesCaptureRule, isRecentJob } from "./filter.js";
 
@@ -279,15 +279,23 @@ export function removeJobs(ids) {
  * Overwrites `jobs_latest.csv` (or CSV_LATEST_FILE) each run.
  * @returns {{ csvPath: string, latestPath: string, count: number }}
  */
+function csvSourceRank(source) {
+  const src = String(source || "").toLowerCase();
+  const idx = CSV_SOURCE_ORDER.indexOf(src);
+  return idx === -1 ? CSV_SOURCE_ORDER.length : idx;
+}
+
 export function syncCsv(rows = null) {
   const all = rows || allJobs();
   const clean = (all || []).filter((j) => matchesOutputRule(j));
-  // Newest first within the combined file.
-  clean.sort((a, b) =>
-    String(b.last_seen_at || b.date_posted || "").localeCompare(
+  // Source order first (JobRight last), then newest first within each source.
+  clean.sort((a, b) => {
+    const bySource = csvSourceRank(a.source) - csvSourceRank(b.source);
+    if (bySource !== 0) return bySource;
+    return String(b.last_seen_at || b.date_posted || "").localeCompare(
       String(a.last_seen_at || a.date_posted || "")
-    )
-  );
+    );
+  });
 
   const latestPath = config.csvLatestPath;
   writeCsv(latestPath, clean);

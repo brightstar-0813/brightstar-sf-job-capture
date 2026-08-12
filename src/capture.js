@@ -104,22 +104,6 @@ export async function runCapture({ skipSlack = false } = {}) {
       }
     }
 
-    if (config.captureJobright) {
-      const { jobs: jrJobs, auth, appliedIds } = await searchJobrightJobs(browser);
-      console.log(`[capture] jobright jobs: ${jrJobs.length}`);
-      jobrightAuthExpired = !!auth?.unauthenticated;
-      ingestJobs(jrJobs, runId, counts, newJobs);
-
-      if (Array.isArray(appliedIds) && appliedIds.length) {
-        const { removed } = removeJobs(appliedIds);
-        if (removed > 0) {
-          console.log(
-            `[capture] removed ${removed} already-applied jobright jobs from store`
-          );
-        }
-      }
-    }
-
     if (config.captureBuiltin) {
       const { jobs } = await searchBuiltinJobs(browser);
       console.log(`[capture] builtin jobs: ${jobs.length}`);
@@ -146,6 +130,23 @@ export async function runCapture({ skipSlack = false } = {}) {
         `[capture] monster jobs: ${jobs.length}${blocked ? " (blocked)" : ""}`
       );
       ingestJobs(jobs, runId, counts, newJobs);
+    }
+
+    // JobRight last — CSV export also places JobRight rows at the bottom.
+    if (config.captureJobright) {
+      const { jobs: jrJobs, auth, appliedIds } = await searchJobrightJobs(browser);
+      console.log(`[capture] jobright jobs: ${jrJobs.length}`);
+      jobrightAuthExpired = !!auth?.unauthenticated;
+      ingestJobs(jrJobs, runId, counts, newJobs);
+
+      if (Array.isArray(appliedIds) && appliedIds.length) {
+        const { removed } = removeJobs(appliedIds);
+        if (removed > 0) {
+          console.log(
+            `[capture] removed ${removed} already-applied jobright jobs from store`
+          );
+        }
+      }
     }
 
     const pruned = pruneStore();
