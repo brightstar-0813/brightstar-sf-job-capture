@@ -1,7 +1,7 @@
 /**
- * Greenhouse — public company boards (boards.greenhouse.io/{token}).
- * Polls Salesforce ISVs, partners, consultancies, and employers that
- * commonly hire Salesforce talent. Tune via GREENHOUSE_BOARDS.
+ * Lever — public company postings (jobs.lever.co/{token}).
+ * Polls Salesforce ISVs, partners, and employers that hire SF talent.
+ * Tune via LEVER_BOARDS.
  */
 
 import { config } from "../config.js";
@@ -15,17 +15,18 @@ import {
 } from "../ats/map.js";
 
 async function fetchBoardJobs(board) {
-  const url = `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(board)}/jobs?content=true`;
+  const url = `https://api.lever.co/v0/postings/${encodeURIComponent(board)}?mode=json`;
   const res = await tryGetJson(url);
   if (!res.ok) return { ok: false, status: res.status, jobs: [] };
-  return { ok: true, status: res.status, jobs: res.json?.jobs || [] };
+  return {
+    ok: true,
+    status: res.status,
+    jobs: Array.isArray(res.json) ? res.json : [],
+  };
 }
 
-/**
- * @param {import('playwright').Browser} [_browser]
- */
-export async function searchGreenhouseJobs(_browser) {
-  const boards = config.greenhouseBoards || [];
+export async function searchLeverJobs() {
+  const boards = config.leverBoards || [];
   const all = [];
   const seen = new Set();
   const counts = emptySkipCounts();
@@ -33,7 +34,7 @@ export async function searchGreenhouseJobs(_browser) {
   let boardErrors = 0;
   let boardsWithSf = 0;
 
-  console.log(`[greenhouse] scanning ${boards.length} company boards`);
+  console.log(`[lever] scanning ${boards.length} company boards`);
 
   await mapPool(boards, 8, async (board) => {
     let result;
@@ -41,13 +42,13 @@ export async function searchGreenhouseJobs(_browser) {
       result = await fetchBoardJobs(board);
     } catch (err) {
       boardErrors += 1;
-      console.warn(`[greenhouse] board ${board} failed: ${err.message}`);
+      console.warn(`[lever] board ${board} failed: ${err.message}`);
       return;
     }
     if (!result.ok) {
       boardErrors += 1;
       if (result.status !== 404 && result.status !== 0) {
-        console.warn(`[greenhouse] board ${board} HTTP ${result.status}`);
+        console.warn(`[lever] board ${board} HTTP ${result.status}`);
       }
       return;
     }
@@ -59,20 +60,25 @@ export async function searchGreenhouseJobs(_browser) {
       seen.add(`${board}_${id}`);
       scanned += 1;
 
-      const title = j.title || "";
-      const description = j.content || "";
-      const location = j.location?.name || "";
-      const work = inferWorkArrangement(location, title, description);
+      const title = j.text || j.title || "";
+      const description = j.descriptionPlain || j.description || "";
+      const location = j.categories?.location || "";
+      const work = inferWorkArrangement(
+        location,
+        title,
+        description,
+        j.workplaceType || ""
+      );
       const mapped = atsJob({
-        source: "greenhouse",
+        source: "lever",
         board,
         id,
         title,
         organization: companyNameFromSlug(board),
         location,
         work,
-        datePosted: isoDate(j.updated_at),
-        url: j.absolute_url || `https://boards.greenhouse.io/${board}/jobs/${j.id}`,
+        datePosted: isoDate(j.createdAt),
+        url: j.hostedUrl || j.applyUrl || `https://jobs.lever.co/${board}`,
         description,
       });
       if (keepFeedJob(mapped, counts, { skipRecency: true })) {
@@ -83,9 +89,9 @@ export async function searchGreenhouseJobs(_browser) {
     if (keptHere) boardsWithSf += 1;
   });
 
-  logKept("greenhouse", all.length, scanned, counts);
+  logKept("lever", all.length, scanned, counts);
   console.log(
-    `[greenhouse] boards=${boards.length} withSfJobs=${boardsWithSf} errors=${boardErrors}`
+    `[lever] boards=${boards.length} withSfJobs=${boardsWithSf} errors=${boardErrors}`
   );
   return { jobs: all };
 }

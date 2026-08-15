@@ -1,6 +1,6 @@
 # Salesforce Job Capture (multi-source)
 
-Capture **remote Salesforce** jobs from Dice, JobRight, Built In, Greenhouse, ZipRecruiter, and Monster **twice daily (5:00 AM and 5:00 PM local time)**, append/dedupe locally, write **dated CSVs**, and Slack-notify on new jobs.
+Capture **remote Salesforce-ecosystem** jobs from Dice, JobRight, Built In, company career boards (Greenhouse / Lever / Ashby), Remotive, Jobicy, Remote OK, We Work Remotely, ZipRecruiter, and Monster **twice daily (5:00 AM and 5:00 PM local time)**, append/dedupe locally, write **dated CSVs**, and Slack-notify on new jobs.
 
 ## What gets saved
 
@@ -11,7 +11,8 @@ Each run overwrites **one** combined CSV with the latest qualifying jobs from al
 
 Filter (applied to all sources):
 
-- **Keep:** title or JD contains the word `Salesforce`, the job is **remote only** (not hybrid/on-site), and it was **posted within the last `RECENT_DAYS` days** (default 3).
+- **Keep:** the job is a **Salesforce-ecosystem** role — title or JD matches product keywords such as `Salesforce`, `Health Cloud`, `Data Cloud`, `Marketing Cloud`, `Service Cloud`, `Agentforce`, `OmniStudio`, `SFMC`, `NPSP`, `MuleSoft`, and similar — the job is **remote only** (not hybrid/on-site), location is US/Canada/worldwide (not EMEA/LATAM-only), and it was **posted within the last `RECENT_DAYS` days** (default 3).
+- A single passing CRM name-drop in a generic JD (`experience with Salesforce, HubSpot, or Dynamics`) is **not** enough; Salesforce must be in the title, a named product must appear, or Salesforce must be a primary skill.
 - **Skip:** jobs at the **Salesforce** company itself, **hybrid/on-site** roles, **LinkedIn** apply/redirect links, **expired / no-longer-available** postings (Dice banner text; JobRight `isDeleted`/`hiddenJob`), and postings **older than `RECENT_DAYS`** (they also age out of the store/CSVs on each run).
 - **Skip (already applied):** jobs you've **already applied to** — JobRight via `POST /swan/job/applied/jobs-v3`, and **Dice** via the *My Jobs → Applied* tab (needs a saved Dice login, see below). Applied jobs are skipped during capture and removed from the local store each run.
 
@@ -19,10 +20,11 @@ Filter (applied to all sources):
 
 | Source | How it runs | Notes |
 |--------|-------------|-------|
-| **Dice** | Windows Task Scheduler | Optional login for applied-job exclusion |
+| **Dice** | Windows Task Scheduler | Optional login for applied-job exclusion. Searches `SEARCH_QUERIES` (Salesforce, Health Cloud, Data Cloud, …) |
 | **JobRight** | Scheduler + saved Playwright login (or Chrome extension) | Needs `npm run jobright:login` |
-| **Built In** | Scheduler (Playwright) | Reliable; remote + keyword search |
-| **Greenhouse** | Scheduler (public board API) | No login; polls curated company boards (`GREENHOUSE_BOARDS`) |
+| **Built In** | Scheduler (Playwright) | Remote + keyword search; skips listings whose titles aren't Salesforce-related |
+| **Greenhouse / Lever / Ashby** | Scheduler (public company-board APIs) | Direct from employer career sites — Salesforce ISVs, partners, and companies that hire SF admins/devs (`GREENHOUSE_BOARDS`, `LEVER_BOARDS`, `ASHBY_BOARDS`) |
+| **Remotive / Jobicy / Remote OK / We Work Remotely** | Scheduler (public JSON/RSS) | No browser; not Cloudflare-gated — extra recent remote listings |
 | **ZipRecruiter** | Scheduler (Playwright) | Often Cloudflare-blocked in headless — may return 0 |
 | **Monster** | Scheduler (Playwright) | Often empty/blocked in headless — may return 0 |
 
@@ -101,6 +103,10 @@ Then load `extension/` unpacked in Chrome.
 |-----|---------|
 | `CAPTURE_DICE` | `true`/`false` |
 | `CAPTURE_JOBRIGHT` | Playwright JobRight (`false` = use extension) |
+| `CAPTURE_REMOTIVE` / `CAPTURE_JOBICY` / `CAPTURE_REMOTEOK` / `CAPTURE_WWR` | Extra JSON/RSS sources (`true` by default) |
+| `CAPTURE_LEVER` / `CAPTURE_ASHBY` | Company career boards on Lever / Ashby (`true` by default) |
+| `GREENHOUSE_BOARDS` / `LEVER_BOARDS` / `ASHBY_BOARDS` | Comma-separated company board tokens to poll |
+| `SEARCH_QUERIES` | Comma-separated Dice/Built In/Remotive searches (default includes Health Cloud, Data Cloud, Marketing Cloud, Service Cloud, Agentforce) |
 | `JOBRIGHT_AUTH_PATH` | Playwright login state |
 | `CSV_PREFIX_DICE` / `CSV_PREFIX_JOBRIGHT` | Dated filename prefixes |
 | `DATA_DIR` | Output folder (`download`) |

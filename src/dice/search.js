@@ -3,7 +3,7 @@
  */
 
 import fs from "fs";
-import { config } from "../config.js";
+import { config, pagesForSearchQuery } from "../config.js";
 import { collectDiceAppliedIds } from "./applied.js";
 
 /**
@@ -19,9 +19,9 @@ export function postedDateToken(days) {
   return "THIRTY";
 }
 
-export function buildSearchUrl(page = 1) {
+export function buildSearchUrl(page = 1, query = config.searchQ) {
   const params = new URLSearchParams();
-  params.set("q", config.searchQ);
+  params.set("q", query);
   params.set("countryCode", "US");
   params.set("radius", "30");
   params.set("radiusUnit", "mi");
@@ -199,40 +199,49 @@ export async function searchDiceJobs(browser) {
       }
     }
 
-    for (let p = 1; p <= config.maxPages; p += 1) {
-      const url = buildSearchUrl(p);
-      console.log(`[search] page ${p}: ${url}`);
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
-      // Wait for client-side results
-      try {
-        await page.waitForSelector(
-          'a[href*="/job-detail/"], a[href*="/jobs/detail/"]',
-          { timeout: 20000 }
-        );
-      } catch {
-        console.log(`[search] no job links on page ${p}, stopping`);
-        break;
-      }
+    const queries =
+      config.searchQueries?.length > 0
+        ? config.searchQueries
+        : [config.searchQ];
 
-      const batch = await scrapeSearchPage(page);
-      console.log(`[search] page ${p}: found ${batch.length} links`);
-      if (!batch.length) break;
-
-      let newOnPage = 0;
-      for (const job of batch) {
-        if (seenIds.has(job.id)) continue;
-        seenIds.add(job.id);
-        if (appliedIds.has(job.id)) {
-          appliedSkipped += 1;
-          continue;
+    for (let qi = 0; qi < queries.length; qi += 1) {
+      const query = queries[qi];
+      const pages = pagesForSearchQuery(qi);
+      for (let p = 1; p <= pages; p += 1) {
+        const url = buildSearchUrl(p, query);
+        console.log(`[search] q="${query}" page ${p}/${pages}: ${url}`);
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+        // Wait for client-side results
+        try {
+          await page.waitForSelector(
+            'a[href*="/job-detail/"], a[href*="/jobs/detail/"]',
+            { timeout: 20000 }
+          );
+        } catch {
+          console.log(`[search] no job links on page ${p} for "${query}", stopping query`);
+          break;
         }
-        all.push(job);
-        newOnPage += 1;
-      }
-      if (newOnPage === 0) break;
 
-      if (p < config.maxPages && config.delayMs) {
-        await page.waitForTimeout(config.delayMs);
+        const batch = await scrapeSearchPage(page);
+        console.log(`[search] q="${query}" page ${p}: found ${batch.length} links`);
+        if (!batch.length) break;
+
+        let newOnPage = 0;
+        for (const job of batch) {
+          if (seenIds.has(job.id)) continue;
+          seenIds.add(job.id);
+          if (appliedIds.has(job.id)) {
+            appliedSkipped += 1;
+            continue;
+          }
+          all.push(job);
+          newOnPage += 1;
+        }
+        if (newOnPage === 0) break;
+
+        if (p < pages && config.delayMs) {
+          await page.waitForTimeout(config.delayMs);
+        }
       }
     }
   } finally {

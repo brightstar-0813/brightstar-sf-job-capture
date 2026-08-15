@@ -23,6 +23,13 @@ const DEFAULT_TITLES = [
   "Salesforce Solution Architect",
   "Salesforce Project Manager",
   "Salesforce QA Engineer",
+  "Health Cloud",
+  "Data Cloud",
+  "Service Cloud",
+  "Agentforce",
+  "OmniStudio",
+  "Revenue Cloud",
+  "Financial Services Cloud",
 ];
 
 function buildSearchUrl(query = "Salesforce Administrator") {

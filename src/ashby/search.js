@@ -1,7 +1,7 @@
 /**
- * Greenhouse — public company boards (boards.greenhouse.io/{token}).
- * Polls Salesforce ISVs, partners, consultancies, and employers that
- * commonly hire Salesforce talent. Tune via GREENHOUSE_BOARDS.
+ * Ashby — public job-board API (jobs.ashbyhq.com/{token}).
+ * Polls Salesforce ISVs, partners, and employers that hire SF talent.
+ * Tune via ASHBY_BOARDS.
  */
 
 import { config } from "../config.js";
@@ -15,17 +15,14 @@ import {
 } from "../ats/map.js";
 
 async function fetchBoardJobs(board) {
-  const url = `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(board)}/jobs?content=true`;
+  const url = `https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(board)}`;
   const res = await tryGetJson(url);
   if (!res.ok) return { ok: false, status: res.status, jobs: [] };
   return { ok: true, status: res.status, jobs: res.json?.jobs || [] };
 }
 
-/**
- * @param {import('playwright').Browser} [_browser]
- */
-export async function searchGreenhouseJobs(_browser) {
-  const boards = config.greenhouseBoards || [];
+export async function searchAshbyJobs() {
+  const boards = config.ashbyBoards || [];
   const all = [];
   const seen = new Set();
   const counts = emptySkipCounts();
@@ -33,7 +30,7 @@ export async function searchGreenhouseJobs(_browser) {
   let boardErrors = 0;
   let boardsWithSf = 0;
 
-  console.log(`[greenhouse] scanning ${boards.length} company boards`);
+  console.log(`[ashby] scanning ${boards.length} company boards`);
 
   await mapPool(boards, 8, async (board) => {
     let result;
@@ -41,38 +38,46 @@ export async function searchGreenhouseJobs(_browser) {
       result = await fetchBoardJobs(board);
     } catch (err) {
       boardErrors += 1;
-      console.warn(`[greenhouse] board ${board} failed: ${err.message}`);
+      console.warn(`[ashby] board ${board} failed: ${err.message}`);
       return;
     }
     if (!result.ok) {
       boardErrors += 1;
       if (result.status !== 404 && result.status !== 0) {
-        console.warn(`[greenhouse] board ${board} HTTP ${result.status}`);
+        console.warn(`[ashby] board ${board} HTTP ${result.status}`);
       }
       return;
     }
 
     let keptHere = 0;
     for (const j of result.jobs) {
-      const id = String(j.id || "");
+      const id = String(j.id || j.jobId || "");
       if (!id || seen.has(`${board}_${id}`)) continue;
       seen.add(`${board}_${id}`);
       scanned += 1;
 
       const title = j.title || "";
-      const description = j.content || "";
-      const location = j.location?.name || "";
-      const work = inferWorkArrangement(location, title, description);
+      const description = j.descriptionHtml || j.descriptionPlain || "";
+      const location = j.locationName || j.location || "";
+      const work = inferWorkArrangement(
+        location,
+        title,
+        description,
+        j.workplaceType || j.employmentType || ""
+      );
       const mapped = atsJob({
-        source: "greenhouse",
+        source: "ashby",
         board,
         id,
         title,
         organization: companyNameFromSlug(board),
         location,
         work,
-        datePosted: isoDate(j.updated_at),
-        url: j.absolute_url || `https://boards.greenhouse.io/${board}/jobs/${j.id}`,
+        datePosted: isoDate(j.publishedDate || j.publishedAt || j.updatedAt),
+        url:
+          j.jobUrl ||
+          j.applyUrl ||
+          `https://jobs.ashbyhq.com/${board}/job/${id}`,
         description,
       });
       if (keepFeedJob(mapped, counts, { skipRecency: true })) {
@@ -83,9 +88,9 @@ export async function searchGreenhouseJobs(_browser) {
     if (keptHere) boardsWithSf += 1;
   });
 
-  logKept("greenhouse", all.length, scanned, counts);
+  logKept("ashby", all.length, scanned, counts);
   console.log(
-    `[greenhouse] boards=${boards.length} withSfJobs=${boardsWithSf} errors=${boardErrors}`
+    `[ashby] boards=${boards.length} withSfJobs=${boardsWithSf} errors=${boardErrors}`
   );
   return { jobs: all };
 }

@@ -4,13 +4,25 @@ import { config, CSV_HEADERS, SOURCE_IDS, CSV_SOURCE_ORDER } from "./config.js";
 import { writeCsv } from "./csv.js";
 import { matchesCaptureRule, isRecentJob } from "./filter.js";
 
+/** Career-board sources: still listed = still open, even if date_posted is old. */
+const ATS_SOURCES = new Set(["greenhouse", "lever", "ashby"]);
+
 /**
  * A job qualifies for the store/CSV output when it matches the capture rule
- * (remote Salesforce, non-Salesforce employer) AND was posted within the
- * configured recency window.
+ * (remote Salesforce-ecosystem role, non-Salesforce employer) AND was posted
+ * within the configured recency window. Greenhouse/Lever/Ashby jobs instead
+ * stay while we still see them on the live board (last_seen_at).
  */
 function matchesOutputRule(job) {
-  return matchesCaptureRule(job) && isRecentJob(job, config.recentDays);
+  if (!matchesCaptureRule(job)) return false;
+  const src = String(job.source || "").toLowerCase();
+  if (ATS_SOURCES.has(src)) {
+    return isRecentJob(
+      { ...job, date_posted: job.last_seen_at || job.first_seen_at },
+      config.recentDays
+    );
+  }
+  return isRecentJob(job, config.recentDays);
 }
 
 /**

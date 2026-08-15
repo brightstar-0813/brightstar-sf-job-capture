@@ -15,6 +15,13 @@ function bool(name, fallback) {
   return String(raw).toLowerCase() !== "false";
 }
 
+function csvList(name, fallbackItems) {
+  return String(process.env[name] || fallbackItems.join(","))
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 export const config = {
   root,
   dataDir,
@@ -29,7 +36,20 @@ export const config = {
   slackWebhookUrl: String(process.env.SLACK_WEBHOOK_URL || "").trim(),
   port: Number(process.env.PORT || 3847),
   searchQ: process.env.SEARCH_Q || "Salesforce",
+  /**
+   * Keyword searches used by Dice / Built In / Remotive. First query uses
+   * MAX_PAGES; the rest use SEARCH_EXTRA_PAGES so product searches stay cheap.
+   */
+  searchQueries: csvList("SEARCH_QUERIES", [
+    "Salesforce",
+    "Health Cloud",
+    "Data Cloud",
+    "Marketing Cloud",
+    "Service Cloud",
+    "Agentforce",
+  ]),
   maxPages: Math.max(1, Number(process.env.MAX_PAGES || 5)),
+  searchExtraPages: Math.max(1, Number(process.env.SEARCH_EXTRA_PAGES || 2)),
   /** Only capture/keep jobs posted within this many days (both sources). */
   recentDays: Math.max(1, Number(process.env.RECENT_DAYS || 3)),
   pageSize: Math.max(1, Math.min(100, Number(process.env.PAGE_SIZE || 20))),
@@ -45,68 +65,188 @@ export const config = {
   captureZiprecruiter: bool("CAPTURE_ZIPRECRUITER", true),
   /** Often empty/blocked in headless — on by default but may yield 0. */
   captureMonster: bool("CAPTURE_MONSTER", true),
+  /** Public JSON APIs — no browser, not Cloudflare-gated. */
+  captureRemotive: bool("CAPTURE_REMOTIVE", true),
+  captureJobicy: bool("CAPTURE_JOBICY", true),
+  captureRemoteok: bool("CAPTURE_REMOTEOK", true),
+  captureWwr: bool("CAPTURE_WWR", true),
+  captureLever: bool("CAPTURE_LEVER", true),
+  captureAshby: bool("CAPTURE_ASHBY", true),
   /**
    * Greenhouse board tokens (boards.greenhouse.io/{token}). No global search —
-   * we poll these company boards and keep remote Salesforce matches.
+   * we poll Salesforce ISVs/partners plus employers that commonly hire
+   * Salesforce talent. Tune via GREENHOUSE_BOARDS.
    */
-  greenhouseBoards: String(
-    process.env.GREENHOUSE_BOARDS ||
-      [
-        "affirm",
-        "stripe",
-        "datadog",
-        "notion",
-        "figma",
-        "hubspot",
-        "twilio",
-        "snowflakecomputing",
-        "gitlab",
-        "cloudflare",
-        "doordash",
-        "instacart",
-        "asana",
-        "coinbase",
-        "gusto",
-        "rippling",
-        "ramp",
-        "brex",
-        "airbnb",
-        "dropbox",
-        "boxinc",
-        "zendesk",
-        "plaid",
-        "calendly",
-        "canva",
-        "discord",
-        "robinhood",
-        "square",
-        "block",
-        "okta",
-        "hashicorp",
-        "databricks",
-        "mongodb",
-        "elastic",
-        "confluent",
-        "docusign",
-        "smartsheet",
-        "qualtrics",
-        "surveymonkey",
-        "duolingo",
-        "grammarly",
-        "coursera",
-        "udemy",
-        "khanacademy",
-        "vanta",
-        "mercury",
-        "flexport",
-        "shippo",
-        "faire",
-        "whatnot",
-      ].join(",")
-  )
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean),
+  greenhouseBoards: csvList("GREENHOUSE_BOARDS", [
+    "copado",
+    "gearset",
+    "ownbackup",
+    "own",
+    "ncino",
+    "conga",
+    "servicemax",
+    "certinia",
+    "financialforce",
+    "heroku",
+    "mulesoft",
+    "tableau",
+    "slack",
+    "trailhead",
+    "docusign",
+    "workato",
+    "celigo",
+    "jitterbit",
+    "informatica",
+    "snaplogic",
+    "odaseva",
+    "flosum",
+    "autorabit",
+    "prodly",
+    "salto",
+    "slalom",
+    "persistent",
+    "osfdigital",
+    "cloudkettle",
+    "gong",
+    "clari",
+    "highspot",
+    "seismic",
+    "outreach",
+    "salesloft",
+    "zoominfo",
+    "demandbase",
+    "stripe",
+    "twilio",
+    "zendesk",
+    "okta",
+    "intuit",
+    "adobe",
+    "paypal",
+    "block",
+    "square",
+    "snowflakecomputing",
+    "databricks",
+    "hubspot",
+    "dropbox",
+    "boxinc",
+    "smartsheet",
+    "qualtrics",
+    "gusto",
+    "rippling",
+    "affirm",
+    "sofi",
+    "chime",
+    "gitlab",
+    "cloudflare",
+    "datadog",
+    "mongodb",
+    "elastic",
+    "confluent",
+    "airbnb",
+    "doordash",
+    "instacart",
+    "coinbase",
+    "robinhood",
+    "plaid",
+    "brex",
+    "ramp",
+    "mercury",
+    "vanta",
+    "asana",
+    "notion",
+    "figma",
+    "calendly",
+    "intercom",
+    "anthropic",
+    "openai",
+    "discord",
+  ]),
+  /**
+   * Lever company tokens (jobs.lever.co/{token}). Same idea as Greenhouse.
+   */
+  leverBoards: csvList("LEVER_BOARDS", [
+    "copado",
+    "gearset",
+    "ownbackup",
+    "ncino",
+    "conga",
+    "certinia",
+    "mulesoft",
+    "tableau",
+    "slack",
+    "docusign",
+    "workato",
+    "celigo",
+    "gong",
+    "clari",
+    "outreach",
+    "salesloft",
+    "highspot",
+    "seismic",
+    "zoominfo",
+    "slalom",
+    "netflix",
+    "canva",
+    "figma",
+    "notion",
+    "vercel",
+    "linear",
+    "anthropic",
+    "openai",
+    "stripe",
+    "twilio",
+    "zendesk",
+    "okta",
+    "hubspot",
+    "databricks",
+    "snowflake",
+    "gitlab",
+    "cloudflare",
+    "datadog",
+    "airbnb",
+    "coinbase",
+    "robinhood",
+    "plaid",
+    "brex",
+    "ramp",
+    "gusto",
+    "rippling",
+    "intercom",
+    "asana",
+  ]),
+  /**
+   * Ashby job-board tokens (jobs.ashbyhq.com/{token}).
+   */
+  ashbyBoards: csvList("ASHBY_BOARDS", [
+    "copado",
+    "gearset",
+    "ownbackup",
+    "ncino",
+    "conga",
+    "certinia",
+    "workato",
+    "gong",
+    "clari",
+    "outreach",
+    "salesloft",
+    "ramp",
+    "notion",
+    "linear",
+    "vercel",
+    "openai",
+    "anthropic",
+    "rippling",
+    "vanta",
+    "mercury",
+    "brex",
+    "plaid",
+    "databricks",
+    "snowflake",
+    "asana",
+    "figma",
+    "canva",
+    "intercom",
+  ]),
   jobrightAuthPath: path.resolve(
     root,
     process.env.JOBRIGHT_AUTH_PATH || path.join("download", "jobright-auth.json")
@@ -121,10 +261,10 @@ export const config = {
    * JobRight returns almost only jobs AT the Salesforce company, so we seed the
    * search with several Salesforce role families to surface Salesforce-skill
    * roles across many employers. Whether a returned job is KEPT is decided by
-   * the capture rule (word "Salesforce" in title OR description, minus the
-   * Salesforce company) — never by matching one of these seed titles — so
-   * differently-titled roles (e.g. "Software Engineer II (Salesforce)") are
-   * still captured. Broaden/tune via the JOBRIGHT_TITLES env (comma-separated).
+   * the capture rule (Salesforce / Health Cloud / Data Cloud / … in title or as
+   * a primary skill, minus the Salesforce company) — never by matching one of
+   * these seed titles — so differently-titled roles (e.g. "Software Engineer II
+   * (Salesforce)") are still captured. Broaden/tune via JOBRIGHT_TITLES.
    */
   jobrightTitles: String(
     process.env.JOBRIGHT_TITLES ||
@@ -141,6 +281,13 @@ export const config = {
         "Salesforce Solution Architect",
         "Salesforce Project Manager",
         "Salesforce QA Engineer",
+        "Health Cloud",
+        "Data Cloud",
+        "Service Cloud",
+        "Agentforce",
+        "OmniStudio",
+        "Revenue Cloud",
+        "Financial Services Cloud",
       ].join(",")
   )
     .split(",")
@@ -148,12 +295,22 @@ export const config = {
     .filter(Boolean),
 };
 
+export function pagesForSearchQuery(index) {
+  return Number(index) === 0 ? config.maxPages : config.searchExtraPages;
+}
+
 /** Known capture source ids (used for status counts). */
 export const SOURCE_IDS = [
   "dice",
   "jobright",
   "builtin",
   "greenhouse",
+  "lever",
+  "ashby",
+  "remotive",
+  "jobicy",
+  "remoteok",
+  "wwr",
   "ziprecruiter",
   "monster",
 ];
@@ -163,6 +320,12 @@ export const CSV_SOURCE_ORDER = [
   "dice",
   "builtin",
   "greenhouse",
+  "lever",
+  "ashby",
+  "remotive",
+  "jobicy",
+  "remoteok",
+  "wwr",
   "ziprecruiter",
   "monster",
   "jobright",

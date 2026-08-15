@@ -11,7 +11,7 @@
 (function () {
   // Bump when scrape/API body changes so executeScript can replace a stale
   // injection (old code used workModel: ["Remote"] → HTTP 400).
-  const CS_VERSION = 3;
+  const CS_VERSION = 4;
   if (window.__SF_JOBRIGHT_CS_VERSION__ === CS_VERSION) return;
   if (typeof window.__SF_JOBRIGHT_CS_LISTENER__ === "function") {
     try {
@@ -23,16 +23,39 @@
   window.__SF_JOBRIGHT_CS_VERSION__ = CS_VERSION;
   window.__SF_JOBRIGHT_CS_LOADED__ = true;
 
-const SALESFORCE_RE = /\bSalesforce\b/i;
+const SF_PRODUCT_RE = /salesforce|salesfoce|salseforce|health\s*cloud|healthcloud|salesforce\s+data\s*cloud|datacloud|marketing\s*cloud|service\s*cloud|commerce\s*cloud|experience\s*cloud|community\s*cloud|revenue\s*cloud|sales\s*cloud|industry\s*cloud|financial\s*services\s*cloud|nonprofit\s*cloud|education\s*cloud|manufacturing\s*cloud|consumer\s*goods\s*cloud|public\s*sector\s*cloud|communications\s*cloud|\bnpsp\b|agentforce|omnistudio|vlocity|\bsfmc\b|\bsfcc\b|pardot|account\s+engagement|lightning\s+web\s+components|\blwc\b|steelbrick|salesforce\s+cpq|salesforce\s+flow|\bsoql\b|\bsosl\b|\bmulesoft\b|einstein\s+(gpt|copilot|analytics|for\s+sales|for\s+service)|apex\s+(class(?:es)?|trigger(?:s)?|code|developer|programming)/i;
+const SF_STRONG_JD_RE = /health\s*cloud|healthcloud|salesforce\s+data\s*cloud|datacloud|marketing\s*cloud|service\s*cloud|commerce\s*cloud|experience\s*cloud|community\s*cloud|revenue\s*cloud|sales\s*cloud|financial\s*services\s*cloud|nonprofit\s*cloud|\bnpsp\b|agentforce|omnistudio|vlocity|\bsfmc\b|\bsfcc\b|pardot|account\s+engagement|lightning\s+web\s+components|\blwc\b|steelbrick|salesforce\s+cpq|\bsoql\b|\bsosl\b|\bmulesoft\b|apex\s+(class(?:es)?|trigger(?:s)?|code|developer|programming)/i;
+const SF_ROLE_IN_JD_RE = /\bsalesforce\s+(admin(?:istrator)?|developer|architect|consultant|engineer|platform|cpq|commerce|flow|lightning|certified|experience|marketing\s+cloud|service\s+cloud|health\s+cloud|data\s+cloud)/i;
+const OTHER_CRM_RE = /hubspot|microsoft\s*dynamics|dynamics\s*365|zoho|pipedrive|oracle\s*(crm|sales)?|sap\s*crm|freshsales|sugarcrm|zendesk|servicenow|veeva|salesloft/i;
+const COMPETING_PLATFORM_RE = /\b(magento|shopify|woocommerce|servicenow|workday|veeva|hubspot|salesloft|docusign|sap\b|oracle|epic\b|netsuite)\b/i;
 // Salesforce as an employer (exclude), but not staffing firms whose name merely
 // contains "Salesforce".
 const SALESFORCE_EMPLOYER_RE = /^\s*salesforce(?:\.com|,?\s*inc\.?)?\s*$/i;
 
+function isPassingCrmMention(description) {
+  const d = String(description || "");
+  if (/salesforce\s*[,;/|&]\s*/i.test(d) && OTHER_CRM_RE.test(d)) return true;
+  if (OTHER_CRM_RE.test(d) && /[,;/|&]\s*salesforce\b/i.test(d)) return true;
+  if (/(such as|including|e\.g\.|for example|like)\s+[^\n.]{0,60}salesforce/i.test(d)) return true;
+  if (/salesforce\s+(or|and)\s+(similar|equivalent|other|hubspot|dynamics)/i.test(d)) return true;
+  return false;
+}
+
 function containsSalesforce(title, description) {
-  return (
-    SALESFORCE_RE.test(String(title || "")) ||
-    SALESFORCE_RE.test(String(description || ""))
-  );
+  const t = String(title || "");
+  const d = String(description || "");
+  if (SF_PRODUCT_RE.test(t) || (/\bcpq\b/i.test(t) && !/\b(oracle|sap)\b/i.test(t))) return true;
+  if (COMPETING_PLATFORM_RE.test(t) && !SF_PRODUCT_RE.test(t)) return false;
+  if (!t.trim()) {
+    return (SF_STRONG_JD_RE.test(d) || SF_ROLE_IN_JD_RE.test(d)) && !isPassingCrmMention(d);
+  }
+  const titleLooksSf =
+    SF_PRODUCT_RE.test(t) ||
+    (/\bcpq\b/i.test(t) && !/\b(oracle|sap)\b/i.test(t)) ||
+    (/\bcrm\b/i.test(t) && !OTHER_CRM_RE.test(t));
+  if (!titleLooksSf) return false;
+  if (isPassingCrmMention(d)) return false;
+  return SF_STRONG_JD_RE.test(d) || SF_ROLE_IN_JD_RE.test(d);
 }
 
 function isSalesforceEmployer(organization) {

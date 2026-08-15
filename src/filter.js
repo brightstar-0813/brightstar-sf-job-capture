@@ -1,25 +1,211 @@
 /**
- * Capture rule: keep a job when its title OR description contains the word
- * "Salesforce" (case-insensitive, word boundary), EXCEPT jobs whose employer is
- * Salesforce itself. The employer exclusion is what removes Salesforce-company
- * postings (whose "Salesforce is the #1 AI CRM…" boilerplate would otherwise
- * match on description); company name is never used as a positive match signal.
+ * Salesforce-ecosystem product / platform names (title or JD).
+ * Includes common typos so "Salesfoce Developer" still matches.
  */
-const SALESFORCE_RE = /\bSalesforce\b/i;
+const SF_PRODUCT_RE = new RegExp(
+  [
+    "salesforce",
+    "salesfoce",
+    "salseforce",
+    "health\\s*cloud",
+    "healthcloud",
+    "salesforce\\s+data\\s*cloud",
+    "datacloud",
+    "marketing\\s*cloud",
+    "service\\s*cloud",
+    "commerce\\s*cloud",
+    "experience\\s*cloud",
+    "community\\s*cloud",
+    "revenue\\s*cloud",
+    "sales\\s*cloud",
+    "industry\\s*cloud",
+    "financial\\s*services\\s*cloud",
+    "nonprofit\\s*cloud",
+    "education\\s*cloud",
+    "manufacturing\\s*cloud",
+    "consumer\\s*goods\\s*cloud",
+    "public\\s*sector\\s*cloud",
+    "communications\\s*cloud",
+    "\\bnpsp\\b",
+    "agentforce",
+    "omnistudio",
+    "vlocity",
+    "\\bsfmc\\b",
+    "\\bsfcc\\b",
+    "pardot",
+    "account\\s+engagement",
+    "lightning\\s+web\\s+components",
+    "\\blwc\\b",
+    "steelbrick",
+    "salesforce\\s+cpq",
+    "salesforce\\s+flow",
+    "\\bsoql\\b",
+    "\\bsosl\\b",
+    "\\bmulesoft\\b",
+    "einstein\\s+(gpt|copilot|analytics|for\\s+sales|for\\s+service)",
+    "apex\\s+(class(?:es)?|trigger(?:s)?|code|developer|programming)",
+  ].join("|"),
+  "i"
+);
+
+/** Product names that are stronger than a passing "Salesforce" CRM mention. */
+const SF_STRONG_JD_RE = new RegExp(
+  [
+    "health\\s*cloud",
+    "healthcloud",
+    "salesforce\\s+data\\s*cloud",
+    "datacloud",
+    "marketing\\s*cloud",
+    "service\\s*cloud",
+    "commerce\\s*cloud",
+    "experience\\s*cloud",
+    "community\\s*cloud",
+    "revenue\\s*cloud",
+    "sales\\s*cloud",
+    "financial\\s*services\\s*cloud",
+    "nonprofit\\s*cloud",
+    "\\bnpsp\\b",
+    "agentforce",
+    "omnistudio",
+    "vlocity",
+    "\\bsfmc\\b",
+    "\\bsfcc\\b",
+    "pardot",
+    "account\\s+engagement",
+    "lightning\\s+web\\s+components",
+    "\\blwc\\b",
+    "steelbrick",
+    "salesforce\\s+cpq",
+    "\\bsoql\\b",
+    "\\bsosl\\b",
+    "\\bmulesoft\\b",
+    "apex\\s+(class(?:es)?|trigger(?:s)?|code|developer|programming)",
+  ].join("|"),
+  "i"
+);
+
+const SF_ROLE_IN_JD_RE =
+  /\bsalesforce\s+(admin(?:istrator)?|developer|architect|consultant|engineer|platform|cpq|commerce|flow|lightning|certified|experience|marketing\s+cloud|service\s+cloud|health\s+cloud|data\s+cloud)/i;
+
+const OTHER_CRM_RE =
+  /hubspot|microsoft\s*dynamics|dynamics\s*365|zoho|pipedrive|oracle\s*(crm|sales)?|sap\s*crm|freshsales|sugarcrm|zendesk|servicenow|veeva|salesloft/i;
+
+const COMPETING_PLATFORM_RE =
+  /\b(magento|shopify|woocommerce|servicenow|workday|veeva|hubspot|salesloft|docusign|sap\b|oracle|epic\b|netsuite)\b/i;
 
 // Matches the Salesforce company as an employer, e.g. "Salesforce",
 // "Salesforce.com", "Salesforce, Inc." — but NOT staffing/consulting firms
 // that merely have "Salesforce" as part of a longer name.
 const SALESFORCE_EMPLOYER_RE = /^\s*salesforce(?:\.com|,?\s*inc\.?)?\s*$/i;
 
+function isPassingCrmMention(description) {
+  const d = String(description || "");
+  if (/salesforce\s*[,;/|&]\s*/i.test(d) && OTHER_CRM_RE.test(d)) return true;
+  if (OTHER_CRM_RE.test(d) && /[,;/|&]\s*salesforce\b/i.test(d)) return true;
+  if (/(such as|including|e\.g\.|for example|like)\s+[^\n.]{0,60}salesforce/i.test(d)) {
+    return true;
+  }
+  if (/salesforce\s+(or|and)\s+(similar|equivalent|other|hubspot|dynamics)/i.test(d)) {
+    return true;
+  }
+  if (
+    /(crms?|crm platforms?|crm tools?|crm systems?)\s*[:(\-]?[^\n.]{0,80}salesforce/i.test(d) &&
+    OTHER_CRM_RE.test(d)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Cheap listing-title check used to skip irrelevant detail scrapes.
+ * CRM-titled roles are included unless they name a competing CRM.
+ */
+export function looksSalesforceTitle(title) {
+  const t = String(title || "");
+  if (!t.trim()) return true;
+  if (SF_PRODUCT_RE.test(t)) return true;
+  if (/\bcpq\b/i.test(t) && !/\b(oracle|sap)\b/i.test(t)) return true;
+  if (COMPETING_PLATFORM_RE.test(t) && !SF_PRODUCT_RE.test(t)) return false;
+  if (/\bcrm\b/i.test(t) && !OTHER_CRM_RE.test(t)) return true;
+  return false;
+}
+
+/**
+ * True when the job is a Salesforce-ecosystem role (product keywords in the
+ * title, or a Salesforce product/role in the JD with a technical title) —
+ * not a passing CRM name-drop.
+ */
 export function containsSalesforce(title, description) {
   const t = String(title || "");
   const d = String(description || "");
-  return SALESFORCE_RE.test(t) || SALESFORCE_RE.test(d);
+  if (SF_PRODUCT_RE.test(t)) return true;
+  if (/\bcpq\b/i.test(t) && !/\b(oracle|sap)\b/i.test(t)) return true;
+  if (COMPETING_PLATFORM_RE.test(t) && !SF_PRODUCT_RE.test(t)) return false;
+  if (!t.trim()) {
+    return (
+      (SF_STRONG_JD_RE.test(d) || SF_ROLE_IN_JD_RE.test(d)) &&
+      !isPassingCrmMention(d)
+    );
+  }
+  if (!looksSalesforceTitle(t)) return false;
+  if (isPassingCrmMention(d)) return false;
+  return SF_STRONG_JD_RE.test(d) || SF_ROLE_IN_JD_RE.test(d);
 }
 
 export function isSalesforceEmployer(organization) {
   return SALESFORCE_EMPLOYER_RE.test(String(organization || "").trim());
+}
+
+/**
+ * Prefer US / Canada / worldwide remote. Drop postings that are clearly
+ * another region only (EMEA, LATAM, India, UK-only, etc.).
+ */
+export function isUsFriendlyLocation(location) {
+  const s = String(location || "").toLowerCase().trim();
+  if (!s) return true;
+  if (
+    /\b(united states|usa|u\.s\.a\.?|u\.s\.|north america|canada|americas)\b/.test(
+      s
+    )
+  ) {
+    return true;
+  }
+  if (
+    /\b(worldwide|anywhere|global)\b/.test(s) &&
+    !/\b(emea|europe|india|uk[- ]only|latam)\b/.test(s)
+  ) {
+    return true;
+  }
+  if (/^remote\b/.test(s) && !/\b(emea|europe|india|uk|latam|apac)\b/.test(s)) {
+    return true;
+  }
+  if (
+    /\b(uk|united kingdom|germany|france|india|emea|apac|australia|netherlands|spain|brazil|mexico|latam|latin america|poland|ireland)\b/.test(
+      s
+    ) &&
+    !/\b(usa|united states|worldwide|anywhere|canada|north america)\b/.test(s)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+export function stripHtml(html) {
+  return String(html || "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/li>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 /**
@@ -38,16 +224,27 @@ export function isRemoteArrangement(workArrangement) {
 }
 
 /**
- * Final capture decision for a job: title or description contains "Salesforce",
- * the employer is not Salesforce itself, and the role is remote (not hybrid or
- * on-site).
- * @param {{ title?: string, description?: string, organization?: string, work_arrangement?: string }} job
+ * Why a job is rejected, or null if it should be kept.
+ * @param {{ title?: string, description?: string, organization?: string, work_arrangement?: string, location?: string }} job
+ */
+export function captureRuleReason(job) {
+  if (!job) return "empty";
+  if (isSalesforceEmployer(job.organization)) return "employer is Salesforce";
+  if (!isRemoteArrangement(job.work_arrangement)) return "not remote";
+  if (!isUsFriendlyLocation(job.location)) return "location not US/remote-friendly";
+  if (!containsSalesforce(job.title, job.description)) {
+    return "low Salesforce relevance";
+  }
+  return null;
+}
+
+/**
+ * Keep remote Salesforce-ecosystem roles (product keywords / primary skill),
+ * excluding Salesforce-the-company and hybrid/on-site.
+ * @param {{ title?: string, description?: string, organization?: string, work_arrangement?: string, location?: string }} job
  */
 export function matchesCaptureRule(job) {
-  if (!job) return false;
-  if (isSalesforceEmployer(job.organization)) return false;
-  if (!isRemoteArrangement(job.work_arrangement)) return false;
-  return containsSalesforce(job.title, job.description);
+  return captureRuleReason(job) == null;
 }
 
 export function filterSalesforceJobs(jobs) {
