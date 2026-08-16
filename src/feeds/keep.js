@@ -29,7 +29,7 @@ export function keepFeedJob(job, counts, { skipRecency = false } = {}) {
     counts.nonRemote += 1;
     return false;
   }
-  if (!isUsFriendlyLocation(job.location)) {
+  if (!isUsFriendlyLocation(job.location, job.title)) {
     counts.location += 1;
     return false;
   }

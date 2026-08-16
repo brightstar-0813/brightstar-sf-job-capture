@@ -157,22 +157,25 @@ export function isSalesforceEmployer(organization) {
   return SALESFORCE_EMPLOYER_RE.test(String(organization || "").trim());
 }
 
+const US_RE = /\b(united states|usa|u\.s\.a\.?|u\.s\.)\b/;
+const CANADA_RE =
+  /\b(canada|canadian|ontario|quebec|british columbia|alberta|manitoba|saskatchewan|nova scotia|toronto|vancouver|montreal|ottawa|calgary|edmonton)\b/;
+const OTHER_REGION_RE =
+  /\b(uk|united kingdom|germany|france|india|emea|apac|australia|netherlands|spain|brazil|mexico|latam|latin america|poland|ireland)\b/;
+
 /**
- * Prefer US / Canada / worldwide remote. Drop postings that are clearly
- * another region only (EMEA, LATAM, India, UK-only, etc.).
+ * US remote only. Drop Canada-only and other-region-only postings.
+ * "US or Canada" still counts as US-eligible. Empty location is kept
+ * (Dice/JobRight searches are already US-scoped).
  */
-export function isUsFriendlyLocation(location) {
-  const s = String(location || "").toLowerCase().trim();
+export function isUsFriendlyLocation(location, title = "") {
+  const s = `${location || ""} ${title || ""}`.toLowerCase().trim();
   if (!s) return true;
+  const hasUs = US_RE.test(s);
+  if (CANADA_RE.test(s) && !hasUs) return false;
+  if (hasUs) return true;
   if (
-    /\b(united states|usa|u\.s\.a\.?|u\.s\.|north america|canada|americas)\b/.test(
-      s
-    )
-  ) {
-    return true;
-  }
-  if (
-    /\b(worldwide|anywhere|global)\b/.test(s) &&
+    /\b(worldwide|anywhere|global|north america|americas)\b/.test(s) &&
     !/\b(emea|europe|india|uk[- ]only|latam)\b/.test(s)
   ) {
     return true;
@@ -180,14 +183,7 @@ export function isUsFriendlyLocation(location) {
   if (/^remote\b/.test(s) && !/\b(emea|europe|india|uk|latam|apac)\b/.test(s)) {
     return true;
   }
-  if (
-    /\b(uk|united kingdom|germany|france|india|emea|apac|australia|netherlands|spain|brazil|mexico|latam|latin america|poland|ireland)\b/.test(
-      s
-    ) &&
-    !/\b(usa|united states|worldwide|anywhere|canada|north america)\b/.test(s)
-  ) {
-    return false;
-  }
+  if (OTHER_REGION_RE.test(s)) return false;
   return true;
 }
 
@@ -231,7 +227,7 @@ export function captureRuleReason(job) {
   if (!job) return "empty";
   if (isSalesforceEmployer(job.organization)) return "employer is Salesforce";
   if (!isRemoteArrangement(job.work_arrangement)) return "not remote";
-  if (!isUsFriendlyLocation(job.location)) return "location not US/remote-friendly";
+  if (!isUsFriendlyLocation(job.location, job.title)) return "location not US";
   if (!containsSalesforce(job.title, job.description)) {
     return "low Salesforce relevance";
   }

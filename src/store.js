@@ -25,6 +25,48 @@ function matchesOutputRule(job) {
   return isRecentJob(job, config.recentDays);
 }
 
+function normalizeKeyPart(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^\w\s+&/-]/g, " ")
+    .replace(
+      /\b(inc|llc|ltd|corp|corporation|co|company|limited|the)\b/g,
+      " "
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Same title + employer is one job, even when Dice/boards assign
+ * different ids and URLs (staffing-agency reposts).
+ */
+export function jobFingerprint(job) {
+  const title = normalizeKeyPart(job?.title);
+  const org = normalizeKeyPart(job?.organization);
+  if (!title || !org) return "";
+  return `${title}||${org}`;
+}
+
+function preferJob(a, b) {
+  const aDesc = String(a.description || "").length;
+  const bDesc = String(b.description || "").length;
+  if (bDesc !== aDesc) return bDesc > aDesc ? b : a;
+  const aSeen = String(a.last_seen_at || a.first_seen_at || "");
+  const bSeen = String(b.last_seen_at || b.first_seen_at || "");
+  if (bSeen !== aSeen) return bSeen > aSeen ? b : a;
+  return a;
+}
+
+function findJobByFingerprint(jobs, fingerprint, exceptId) {
+  if (!fingerprint) return null;
+  for (const job of Object.values(jobs)) {
+    if (exceptId && String(job.id) === String(exceptId)) continue;
+    if (jobFingerprint(job) === fingerprint) return job;
+  }
+  return null;
+}
+
 /**
  * File-backed store (JSON) — no native deps.
  * Keeps jobs + run history for dedupe and CSV sync.
@@ -214,6 +256,23 @@ export function upsertJob(scraped, runId) {
   };
 
   if (!existing) {
+    const twin = findJobByFingerprint(s.jobs, jobFingerprint(base), id);
+    if (twin) {
+      const merged = {
+        ...twin,
+        ...base,
+        id: twin.id,
+        url: twin.url || base.url,
+        first_seen_run_id: twin.first_seen_run_id,
+        last_seen_run_id: runId,
+        first_seen_at: twin.first_seen_at,
+        last_seen_at: now,
+        status: "updated",
+      };
+      s.jobs[twin.id] = merged;
+      save();
+      return { status: "updated", job: merged };
+    }
     const job = {
       ...base,
       first_seen_run_id: runId,
@@ -262,6 +321,23 @@ export function pruneStore() {
       removed += 1;
     }
   }
+
+  const byFp = new Map();
+  for (const job of Object.values(s.jobs)) {
+    const fp = jobFingerprint(job);
+    if (!fp) continue;
+    const prev = byFp.get(fp);
+    if (!prev) {
+      byFp.set(fp, job);
+      continue;
+    }
+    const winner = preferJob(prev, job);
+    const loser = winner === prev ? job : prev;
+    byFp.set(fp, winner);
+    delete s.jobs[loser.id];
+    removed += 1;
+  }
+
   if (removed > 0) save();
   return { removed, kept: Object.keys(s.jobs).length };
 }
