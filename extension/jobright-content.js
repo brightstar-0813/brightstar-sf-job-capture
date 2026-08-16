@@ -71,7 +71,7 @@ function isRemoteArrangement(workArrangement) {
 }
 
 // Only keep jobs posted within this many days (mirror of RECENT_DAYS).
-const RECENT_DAYS = 3;
+const RECENT_DAYS = 7;
 
 function parsePostedDate(value, now) {
   now = now || new Date();
