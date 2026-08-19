@@ -4,7 +4,8 @@
 
 import { extractJobIdFromUrl, normalizeJobUrl } from "./search.js";
 import { config } from "../config.js";
-import { parsePostedDate, isWithinRecentDays } from "../filter.js";
+import { contextOptions } from "../browser.js";
+import { parsePostedDate, isWithinRecentDays, isExpiredPosting } from "../filter.js";
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -34,10 +35,6 @@ export async function scrapeJobDetail(page, url) {
       el ? (el.textContent || "").replace(/\s+/g, " ").trim() : "";
 
     const bodyText = document.body ? document.body.innerText || "" : "";
-    const expired =
-      /this job is no longer available|no longer accepting applications|this (job|position|posting) (has expired|is expired|has been filled|is closed)|job (posting )?(has )?expired/i.test(
-        bodyText
-      );
 
     const titleEl =
       document.querySelector('[data-cy="jobTitle"]') ||
@@ -116,7 +113,7 @@ export async function scrapeJobDetail(page, url) {
     }
 
     return {
-      expired,
+      bodyText,
       title: text(titleEl) || (ld && ld.title) || "",
       organization:
         text(companyEl) ||
@@ -172,7 +169,7 @@ export async function scrapeJobDetail(page, url) {
   return {
     id,
     url: jobUrl,
-    expired: data.expired === true,
+    expired: isExpiredPosting(`${data.bodyText || ""}\n${data.description || ""}`),
     title: data.title,
     organization: String(data.organization || "").trim(),
     location: String(data.location || "").trim(),
@@ -197,11 +194,7 @@ export async function scrapeJobDetail(page, url) {
  * @param {Array<{ id: string, url: string, title?: string, organization?: string, location?: string }>} stubs
  */
 export async function scrapeJobDetails(browser, stubs) {
-  const context = await browser.newContext({
-    userAgent:
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    viewport: { width: 1365, height: 900 },
-  });
+  const context = await browser.newContext(contextOptions());
   const page = await context.newPage();
   const results = [];
 

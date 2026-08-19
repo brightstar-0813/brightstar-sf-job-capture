@@ -1,7 +1,6 @@
 /**
- * Monster — best-effort remote Salesforce scrape.
- * The site often returns an empty/blocked page to headless browsers; we detect
- * that and skip cleanly rather than fail the whole capture.
+ * CareerBuilder — best-effort remote Salesforce scrape.
+ * Often empty or bot-blocked in headless; skip cleanly then.
  */
 
 import { config } from "../config.js";
@@ -20,37 +19,53 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-function buildSearchUrl(page = 1) {
+function postedParam(days) {
+  const d = Math.max(1, Number(days) || 7);
+  if (d <= 1) return "1";
+  if (d <= 3) return "3";
+  if (d <= 7) return "7";
+  return "30";
+}
+
+function buildSearchUrl(q) {
   const params = new URLSearchParams();
-  params.set("q", config.searchQ);
-  params.set("where", "Remote");
-  params.set("page", String(page));
-  params.set("so", "m.h.sh");
-  return `https://www.monster.com/jobs/search?${params.toString()}`;
+  params.set("keywords", q);
+  params.set("location", "Remote");
+  params.set("posted", postedParam(config.recentDays));
+  return `https://www.careerbuilder.com/jobs?${params.toString()}`;
+}
+
+function looksBlocked(title, snippet) {
+  const t = `${title}\n${snippet}`;
+  return /just a moment|unusual traffic|verify you are|access denied|captcha/i.test(
+    t
+  );
 }
 
 /**
  * @param {import('playwright').Browser} browser
  */
-export async function searchMonsterJobs(browser) {
+export async function searchCareerbuilderJobs(browser) {
   const context = await browser.newContext(contextOptions());
   const page = await context.newPage();
   const kept = [];
   const seen = new Set();
+  const queries = (config.searchQueries || [config.searchQ]).slice(0, 3);
 
   try {
-    for (let p = 1; p <= Math.min(3, config.maxPages); p += 1) {
-      const url = buildSearchUrl(p);
-      console.log(`[monster] page ${p}: ${url}`);
+    for (const q of queries) {
+      const url = buildSearchUrl(q);
+      console.log(`[careerbuilder] search: ${url}`);
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
       await sleep(5000 + config.delayMs);
 
-      const bodyLen = await page.evaluate(
-        () => (document.body?.innerText || "").length
+      const title = await page.title();
+      const snippet = await page.evaluate(() =>
+        (document.body?.innerText || "").slice(0, 800)
       );
-      if (bodyLen < 40) {
+      if (looksBlocked(title, snippet) || snippet.length < 40) {
         console.warn(
-          `[monster] empty/blocked page (bodyLen=${bodyLen}) — skipping Monster this run`
+          `[careerbuilder] blocked or empty page — skipping this run`
         );
         return { jobs: [], blocked: true };
       }
@@ -59,10 +74,11 @@ export async function searchMonsterJobs(browser) {
         const out = [];
         const seenLocal = new Set();
         for (const a of document.querySelectorAll(
-          'a[href*="/job-openings/"], a[href*="jobid="]'
+          'a[href*="/job/"], a[href*="/jobs/"]'
         )) {
-          const href = (a.href || "").split("#")[0];
+          const href = (a.href || "").split("?")[0];
           if (!href || seenLocal.has(href)) continue;
+          if (!/careerbuilder\.com\/job/i.test(href)) continue;
           seenLocal.add(href);
           out.push({
             url: href,
@@ -72,20 +88,23 @@ export async function searchMonsterJobs(browser) {
         return out;
       });
 
-      console.log(`[monster] page ${p}: found ${stubs.length} links`);
-      if (!stubs.length) break;
+      console.log(`[careerbuilder] "${q}" listing links: ${stubs.length}`);
+      const relevant = stubs.filter(
+        (s) => !s.title || looksSalesforceTitle(s.title)
+      );
+      const toScrape = relevant.slice(0, 25);
 
-      for (const stub of stubs) {
+      for (let i = 0; i < toScrape.length; i += 1) {
+        const stub = toScrape[i];
         if (seen.has(stub.url)) continue;
         seen.add(stub.url);
-        if (stub.title && !looksSalesforceTitle(stub.title)) continue;
-
+        console.log(`[careerbuilder] detail ${i + 1}/${toScrape.length}`);
         try {
           await page.goto(stub.url, {
             waitUntil: "domcontentloaded",
             timeout: 45000,
           });
-          await sleep(1200 + config.delayMs);
+          await sleep(1000 + config.delayMs);
           const data = await page.evaluate(() => {
             const text = (el) =>
               el ? (el.textContent || "").replace(/\s+/g, " ").trim() : "";
@@ -129,17 +148,16 @@ export async function searchMonsterJobs(browser) {
                 body.slice(0, 15000),
               date_posted: (ld && ld.datePosted) || "",
               work_arrangement: work,
+              bodyPreview: body.slice(0, 2500),
             };
           });
 
-          const idMatch =
-            stub.url.match(/--([a-f0-9-]{20,})/i) ||
-            stub.url.match(/jobid=([^&]+)/i) ||
-            stub.url.match(/\/job-openings\/([^/?#]+)/i);
-          const id = `monster_${idMatch ? idMatch[1] : kept.length}`;
+          if (isExpiredPosting(data.bodyPreview)) continue;
+
+          const idMatch = stub.url.match(/\/job\/([^/?#]+)/i);
           const postedAbs = parsePostedDate(data.date_posted);
           const job = {
-            id,
+            id: `careerbuilder_${idMatch ? idMatch[1] : kept.length}`,
             title: data.title || stub.title || "",
             organization: String(data.organization || "").trim(),
             location: "Remote",
@@ -152,30 +170,29 @@ export async function searchMonsterJobs(browser) {
             salary_currency: "USD",
             salary_unit: "",
             key_skills: "",
-            source: "monster",
+            source: "careerbuilder",
             date_posted: postedAbs
               ? postedAbs.toISOString().slice(0, 10)
               : String(data.date_posted || ""),
-            url: stub.url.split("?")[0],
+            url: stub.url,
             description: String(data.description || "")
               .replace(/<[^>]+>/g, " ")
               .trim(),
           };
 
           if (isSalesforceEmployer(job.organization)) continue;
-          if (isExpiredPosting(`${job.title}\n${job.description}`)) continue;
           if (!isRemoteArrangement(job.work_arrangement)) continue;
           if (!containsSalesforce(job.title, job.description)) continue;
           if (isWithinRecentDays(job.date_posted, config.recentDays) === false)
             continue;
           kept.push(job);
         } catch (err) {
-          console.warn(`[monster] detail failed: ${err.message}`);
+          console.warn(`[careerbuilder] detail failed: ${err.message}`);
         }
       }
     }
 
-    console.log(`[monster] kept ${kept.length} remote Salesforce jobs`);
+    console.log(`[careerbuilder] kept ${kept.length} remote Salesforce jobs`);
     return { jobs: kept, blocked: false };
   } finally {
     await context.close();

@@ -4,11 +4,14 @@
  */
 
 import { config } from "../config.js";
+import { contextOptions } from "../browser.js";
 import {
   containsSalesforce,
   isSalesforceEmployer,
   isRemoteArrangement,
   isWithinRecentDays,
+  isExpiredPosting,
+  looksSalesforceTitle,
   parsePostedDate,
 } from "../filter.js";
 
@@ -27,12 +30,7 @@ function buildSearchUrl() {
  * @param {import('playwright').Browser} browser
  */
 export async function searchZiprecruiterJobs(browser) {
-  const context = await browser.newContext({
-    userAgent:
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    viewport: { width: 1400, height: 900 },
-    locale: "en-US",
-  });
+  const context = await browser.newContext(contextOptions());
   const page = await context.newPage();
   const kept = [];
 
@@ -70,17 +68,25 @@ export async function searchZiprecruiterJobs(browser) {
       return out.slice(0, 60);
     });
 
-    console.log(`[ziprecruiter] listing links: ${stubs.length}`);
-    if (!stubs.length) {
+    const relevant = stubs.filter(
+      (s) => !s.title || looksSalesforceTitle(s.title)
+    );
+    console.log(
+      `[ziprecruiter] listing links: ${stubs.length}` +
+        (relevant.length !== stubs.length
+          ? ` (skip ${stubs.length - relevant.length} unrelated titles)`
+          : "")
+    );
+    if (!relevant.length) {
       console.warn(
         `[ziprecruiter] no job links found (page may be JS-gated) — skipping`
       );
       return { jobs: [], blocked: false };
     }
 
-    for (let i = 0; i < stubs.length; i += 1) {
-      const stub = stubs[i];
-      console.log(`[ziprecruiter] detail ${i + 1}/${stubs.length}`);
+    for (let i = 0; i < relevant.length; i += 1) {
+      const stub = relevant[i];
+      console.log(`[ziprecruiter] detail ${i + 1}/${relevant.length}`);
       try {
         await page.goto(stub.url, { waitUntil: "domcontentloaded", timeout: 45000 });
         await sleep(1200 + config.delayMs);
@@ -158,6 +164,7 @@ export async function searchZiprecruiterJobs(browser) {
         };
 
         if (isSalesforceEmployer(job.organization)) continue;
+        if (isExpiredPosting(`${job.title}\n${job.description}`)) continue;
         if (!isRemoteArrangement(job.work_arrangement)) continue;
         if (!containsSalesforce(job.title, job.description)) continue;
         if (isWithinRecentDays(job.date_posted, config.recentDays) === false) continue;

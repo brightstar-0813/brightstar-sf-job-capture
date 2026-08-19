@@ -7,6 +7,7 @@
 
 import fs from "fs";
 import { config } from "../config.js";
+import { contextOptions as playwrightContext } from "../browser.js";
 import {
   containsSalesforce,
   isSalesforceEmployer,
@@ -234,11 +235,7 @@ async function fetchAppliedJobIds(page) {
  */
 export async function searchJobrightJobs(browser) {
   const hasAuth = fs.existsSync(config.jobrightAuthPath);
-  const contextOptions = {
-    userAgent:
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    viewport: { width: 1400, height: 900 },
-  };
+  const contextOptions = playwrightContext();
   if (hasAuth) {
     contextOptions.storageState = config.jobrightAuthPath;
     console.log(`[jobright] using auth: ${config.jobrightAuthPath}`);

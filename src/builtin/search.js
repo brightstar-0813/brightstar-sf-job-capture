@@ -3,6 +3,7 @@
  */
 
 import { config, pagesForSearchQuery } from "../config.js";
+import { contextOptions } from "../browser.js";
 import {
   containsSalesforce,
   isSalesforceEmployer,
@@ -127,11 +128,7 @@ async function scrapeDetail(page, stub) {
  * @param {import('playwright').Browser} browser
  */
 export async function searchBuiltinJobs(browser) {
-  const context = await browser.newContext({
-    userAgent:
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    viewport: { width: 1400, height: 900 },
-  });
+  const context = await browser.newContext(contextOptions());
   const page = await context.newPage();
   const stubs = [];
   const seen = new Set();

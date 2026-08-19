@@ -4,6 +4,7 @@
 
 import fs from "fs";
 import { config, pagesForSearchQuery } from "../config.js";
+import { contextOptions as playwrightContext } from "../browser.js";
 import { collectDiceAppliedIds } from "./applied.js";
 
 /**
@@ -164,11 +165,7 @@ export async function scrapeSearchPage(page) {
  * @param {import('playwright').Browser} browser
  */
 export async function searchDiceJobs(browser) {
-  const contextOptions = {
-    userAgent:
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    viewport: { width: 1365, height: 900 },
-  };
+  const contextOptions = playwrightContext();
   if (fs.existsSync(config.diceAuthPath)) {
     contextOptions.storageState = config.diceAuthPath;
     console.log(`[search] using Dice auth: ${config.diceAuthPath}`);
@@ -207,41 +204,47 @@ export async function searchDiceJobs(browser) {
     for (let qi = 0; qi < queries.length; qi += 1) {
       const query = queries[qi];
       const pages = pagesForSearchQuery(qi);
-      for (let p = 1; p <= pages; p += 1) {
-        const url = buildSearchUrl(p, query);
-        console.log(`[search] q="${query}" page ${p}/${pages}: ${url}`);
-        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
-        // Wait for client-side results
-        try {
-          await page.waitForSelector(
-            'a[href*="/job-detail/"], a[href*="/jobs/detail/"]',
-            { timeout: 20000 }
-          );
-        } catch {
-          console.log(`[search] no job links on page ${p} for "${query}", stopping query`);
-          break;
-        }
-
-        const batch = await scrapeSearchPage(page);
-        console.log(`[search] q="${query}" page ${p}: found ${batch.length} links`);
-        if (!batch.length) break;
-
-        let newOnPage = 0;
-        for (const job of batch) {
-          if (seenIds.has(job.id)) continue;
-          seenIds.add(job.id);
-          if (appliedIds.has(job.id)) {
-            appliedSkipped += 1;
-            continue;
+      try {
+        for (let p = 1; p <= pages; p += 1) {
+          const url = buildSearchUrl(p, query);
+          console.log(`[search] q="${query}" page ${p}/${pages}: ${url}`);
+          await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+          // Wait for client-side results
+          try {
+            await page.waitForSelector(
+              'a[href*="/job-detail/"], a[href*="/jobs/detail/"]',
+              { timeout: 20000 }
+            );
+          } catch {
+            console.log(`[search] no job links on page ${p} for "${query}", stopping query`);
+            break;
           }
-          all.push(job);
-          newOnPage += 1;
-        }
-        if (newOnPage === 0) break;
 
-        if (p < pages && config.delayMs) {
-          await page.waitForTimeout(config.delayMs);
+          const batch = await scrapeSearchPage(page);
+          console.log(`[search] q="${query}" page ${p}: found ${batch.length} links`);
+          if (!batch.length) break;
+
+          let newOnPage = 0;
+          for (const job of batch) {
+            if (seenIds.has(job.id)) continue;
+            seenIds.add(job.id);
+            if (appliedIds.has(job.id)) {
+              appliedSkipped += 1;
+              continue;
+            }
+            all.push(job);
+            newOnPage += 1;
+          }
+          if (newOnPage === 0) break;
+
+          if (p < pages && config.delayMs) {
+            await page.waitForTimeout(config.delayMs);
+          }
         }
+      } catch (err) {
+        console.warn(
+          `[search] Dice query "${query}" failed (${err.message}) — keeping ${all.length} stubs so far`
+        );
       }
     }
   } finally {

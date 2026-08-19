@@ -47,12 +47,14 @@ export const config = {
     "Marketing Cloud",
     "Service Cloud",
     "Agentforce",
+    "OmniStudio",
+    "Salesforce CPQ",
   ]),
-  maxPages: Math.max(1, Number(process.env.MAX_PAGES || 5)),
-  searchExtraPages: Math.max(1, Number(process.env.SEARCH_EXTRA_PAGES || 2)),
+  maxPages: Math.max(1, Number(process.env.MAX_PAGES || 8)),
+  searchExtraPages: Math.max(1, Number(process.env.SEARCH_EXTRA_PAGES || 3)),
   /** Only capture/keep jobs posted within this many days (both sources). */
   recentDays: Math.max(1, Number(process.env.RECENT_DAYS || 3)),
-  pageSize: Math.max(1, Math.min(100, Number(process.env.PAGE_SIZE || 20))),
+  pageSize: Math.max(1, Math.min(100, Number(process.env.PAGE_SIZE || 50))),
   headless: bool("HEADLESS", true),
   delayMs: Math.max(0, Number(process.env.DELAY_MS || 800)),
   cronSchedule: process.env.CRON_SCHEDULE || "0 5,17 * * *",
@@ -65,6 +67,9 @@ export const config = {
   captureZiprecruiter: bool("CAPTURE_ZIPRECRUITER", true),
   /** Often empty/blocked in headless — on by default but may yield 0. */
   captureMonster: bool("CAPTURE_MONSTER", true),
+  /** Often bot-blocked in headless — on by default but may yield 0. */
+  captureIndeed: bool("CAPTURE_INDEED", true),
+  captureCareerbuilder: bool("CAPTURE_CAREERBUILDER", true),
   /** Public JSON APIs — no browser, not Cloudflare-gated. */
   captureRemotive: bool("CAPTURE_REMOTIVE", true),
   captureJobicy: bool("CAPTURE_JOBICY", true),
@@ -160,6 +165,10 @@ export const config = {
     "anthropic",
     "openai",
     "discord",
+    "epam",
+    "thoughtworks",
+    "globant",
+    "cloudforgood",
   ]),
   /**
    * Lever company tokens (jobs.lever.co/{token}). Same idea as Greenhouse.
@@ -313,6 +322,8 @@ export const SOURCE_IDS = [
   "wwr",
   "ziprecruiter",
   "monster",
+  "indeed",
+  "careerbuilder",
 ];
 
 /** CSV row order — JobRight last so those jobs sit at the bottom of jobs_latest.csv. */
@@ -328,6 +339,8 @@ export const CSV_SOURCE_ORDER = [
   "wwr",
   "ziprecruiter",
   "monster",
+  "indeed",
+  "careerbuilder",
   "jobright",
 ];
 

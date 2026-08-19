@@ -55,6 +55,8 @@ app.get("/api/status", (_req, res) => {
       captureWwr: config.captureWwr,
       captureZiprecruiter: config.captureZiprecruiter,
       captureMonster: config.captureMonster,
+      captureIndeed: config.captureIndeed,
+      captureCareerbuilder: config.captureCareerbuilder,
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });

@@ -219,6 +219,13 @@ export function isRemoteArrangement(workArrangement) {
   return /\bremote\b/.test(w);
 }
 
+/** True when a listing page says the job is closed, filled, or gone. */
+export function isExpiredPosting(text) {
+  return /this job is no longer available|no longer accepting applications|this (job|position|posting) (has expired|is expired|has been filled|is closed)|job (posting )?(has )?expired|position has been filled|no longer posted|this posting is no longer/i.test(
+    String(text || "")
+  );
+}
+
 /**
  * Why a job is rejected, or null if it should be kept.
  * @param {{ title?: string, description?: string, organization?: string, work_arrangement?: string, location?: string }} job

@@ -48,6 +48,22 @@ export function jobFingerprint(job) {
   return `${title}||${org}`;
 }
 
+function isJobrightJob(job) {
+  const src = String(job?.source || "").toLowerCase();
+  const id = String(job?.id || "").toLowerCase();
+  const url = String(job?.url || "").toLowerCase();
+  return (
+    src === "jobright" ||
+    id.startsWith("jobright_") ||
+    url.includes("jobright.ai")
+  );
+}
+
+function sourceFromId(id) {
+  const prefix = String(id || "").split("_")[0].toLowerCase();
+  return SOURCE_IDS.includes(prefix) ? prefix : "";
+}
+
 function preferJob(a, b) {
   const aDesc = String(a.description || "").length;
   const bDesc = String(b.description || "").length;
@@ -262,6 +278,7 @@ export function upsertJob(scraped, runId) {
         ...twin,
         ...base,
         id: twin.id,
+        source: sourceFromId(twin.id) || twin.source || base.source,
         url: twin.url || base.url,
         first_seen_run_id: twin.first_seen_run_id,
         last_seen_run_id: runId,
@@ -367,18 +384,28 @@ export function removeJobs(ids) {
  * Overwrites `jobs_latest.csv` (or CSV_LATEST_FILE) each run.
  * @returns {{ csvPath: string, latestPath: string, count: number }}
  */
-function csvSourceRank(source) {
-  const src = String(source || "").toLowerCase();
+function csvSourceRank(job) {
+  if (isJobrightJob(job)) {
+    return CSV_SOURCE_ORDER.length + 1;
+  }
+  const src = String(job?.source || "").toLowerCase();
   const idx = CSV_SOURCE_ORDER.indexOf(src);
   return idx === -1 ? CSV_SOURCE_ORDER.length : idx;
 }
 
 export function syncCsv(rows = null) {
   const all = rows || allJobs();
-  const clean = (all || []).filter((j) => matchesOutputRule(j));
-  // Source order first (JobRight last), then newest first within each source.
+  const clean = (all || [])
+    .filter((j) => matchesOutputRule(j))
+    .map((j) => {
+      if (isJobrightJob(j)) return { ...j, source: "jobright" };
+      const idSrc = sourceFromId(j.id);
+      return idSrc && idSrc !== j.source ? { ...j, source: idSrc } : j;
+    });
+  // Non-JobRight sources first; JobRight always last (id/url/source).
+  // Within a source, newest first.
   clean.sort((a, b) => {
-    const bySource = csvSourceRank(a.source) - csvSourceRank(b.source);
+    const bySource = csvSourceRank(a) - csvSourceRank(b);
     if (bySource !== 0) return bySource;
     return String(b.last_seen_at || b.date_posted || "").localeCompare(
       String(a.last_seen_at || a.date_posted || "")

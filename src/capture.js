@@ -1,11 +1,12 @@
 /**
  * Capture Salesforce jobs from Dice, JobRight, Built In, company ATS boards
  * (Greenhouse / Lever / Ashby), Remotive, Jobicy, Remote OK, We Work Remotely,
- * ZipRecruiter, and Monster. Task Scheduler / cron entrypoint.
+ * ZipRecruiter, Monster, Indeed, and CareerBuilder. Task Scheduler / cron entrypoint.
  */
 
 import { chromium } from "playwright";
 import { config } from "./config.js";
+import { browserLaunchOptions } from "./browser.js";
 import { searchDiceJobs } from "./dice/search.js";
 import { scrapeJobDetails } from "./dice/detail.js";
 import { searchJobrightJobs } from "./jobright/search.js";
@@ -15,6 +16,8 @@ import { searchLeverJobs } from "./lever/search.js";
 import { searchAshbyJobs } from "./ashby/search.js";
 import { searchZiprecruiterJobs } from "./ziprecruiter/search.js";
 import { searchMonsterJobs } from "./monster/search.js";
+import { searchIndeedJobs } from "./indeed/search.js";
+import { searchCareerbuilderJobs } from "./careerbuilder/search.js";
 import { searchRemotiveJobs } from "./remotive/search.js";
 import { searchJobicyJobs } from "./jobicy/search.js";
 import { searchRemoteokJobs } from "./remoteok/search.js";
@@ -74,6 +77,8 @@ function enabledSources() {
   if (config.captureWwr) out.push("wwr");
   if (config.captureZiprecruiter) out.push("ziprecruiter");
   if (config.captureMonster) out.push("monster");
+  if (config.captureIndeed) out.push("indeed");
+  if (config.captureCareerbuilder) out.push("careerbuilder");
   return out;
 }
 
@@ -128,7 +133,7 @@ export async function runCapture({ skipSlack = false } = {}) {
   try {
     const feedPromise = collectFeedJobs();
 
-    browser = await chromium.launch({ headless: config.headless });
+    browser = await chromium.launch(browserLaunchOptions(config.headless));
 
     if (config.captureDice) {
       await runNamedSource("dice", async () => {
@@ -186,7 +191,32 @@ export async function runCapture({ skipSlack = false } = {}) {
       });
     }
 
-    // JobRight last — CSV export also places JobRight rows at the bottom.
+    if (config.captureIndeed) {
+      await runNamedSource("indeed", async () => {
+        const { jobs, blocked } = await searchIndeedJobs(browser);
+        console.log(
+          `[capture] indeed jobs: ${jobs.length}${blocked ? " (blocked)" : ""}`
+        );
+        ingestJobs(jobs, runId, counts, newJobs);
+      });
+    }
+
+    if (config.captureCareerbuilder) {
+      await runNamedSource("careerbuilder", async () => {
+        const { jobs, blocked } = await searchCareerbuilderJobs(browser);
+        console.log(
+          `[capture] careerbuilder jobs: ${jobs.length}${blocked ? " (blocked)" : ""}`
+        );
+        ingestJobs(jobs, runId, counts, newJobs);
+      });
+    }
+
+    const feedJobs = await feedPromise;
+    if (feedJobs.length) {
+      ingestJobs(feedJobs, runId, counts, newJobs);
+    }
+
+    // JobRight last — CSV also places JobRight rows at the bottom.
     if (config.captureJobright) {
       await runNamedSource("jobright", async () => {
         const { jobs: jrJobs, auth, appliedIds } = await searchJobrightJobs(browser);
@@ -203,11 +233,6 @@ export async function runCapture({ skipSlack = false } = {}) {
           }
         }
       });
-    }
-
-    const feedJobs = await feedPromise;
-    if (feedJobs.length) {
-      ingestJobs(feedJobs, runId, counts, newJobs);
     }
 
     const pruned = pruneStore();
