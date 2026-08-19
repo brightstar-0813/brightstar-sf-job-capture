@@ -67,7 +67,7 @@ export const config = {
   captureZiprecruiter: bool("CAPTURE_ZIPRECRUITER", true),
   /** Often empty/blocked in headless — on by default but may yield 0. */
   captureMonster: bool("CAPTURE_MONSTER", true),
-  /** Often bot-blocked in headless — on by default but may yield 0. */
+  /** Needs `npm run indeed:login` — Cloudflare blocks anonymous headless. */
   captureIndeed: bool("CAPTURE_INDEED", true),
   captureCareerbuilder: bool("CAPTURE_CAREERBUILDER", true),
   /** Public JSON APIs — no browser, not Cloudflare-gated. */
@@ -75,6 +75,12 @@ export const config = {
   captureJobicy: bool("CAPTURE_JOBICY", true),
   captureRemoteok: bool("CAPTURE_REMOTEOK", true),
   captureWwr: bool("CAPTURE_WWR", true),
+  captureHimalayas: bool("CAPTURE_HIMALAYAS", true),
+  captureJobgether: bool("CAPTURE_JOBGETHER", true),
+  captureArbeitnow: bool("CAPTURE_ARBEITNOW", true),
+  captureGooglejobs: bool("CAPTURE_GOOGLEJOBS", true),
+  /** Optional. Google Jobs has no free API — SerpAPI google_jobs engine. */
+  serpapiKey: String(process.env.SERPAPI_KEY || "").trim(),
   captureLever: bool("CAPTURE_LEVER", true),
   captureAshby: bool("CAPTURE_ASHBY", true),
   /**
@@ -264,6 +270,16 @@ export const config = {
     root,
     process.env.DICE_AUTH_PATH || path.join("download", "dice-auth.json")
   ),
+  indeedAuthPath: path.resolve(
+    root,
+    process.env.INDEED_AUTH_PATH || path.join("download", "indeed-auth.json")
+  ),
+  indeedProfileDir: path.resolve(
+    root,
+    process.env.INDEED_PROFILE_DIR || path.join("download", "indeed-profile")
+  ),
+  /** Open a visible Chrome window for Indeed (helps after Cloudflare). */
+  indeedHeaded: bool("INDEED_HEADED", false),
   jobrightMaxPages: Math.max(1, Number(process.env.JOBRIGHT_MAX_PAGES || process.env.MAX_PAGES || 5)),
   /**
    * JobRight search SEEDS (not title filters). A plain "Salesforce" query on
@@ -320,6 +336,10 @@ export const SOURCE_IDS = [
   "jobicy",
   "remoteok",
   "wwr",
+  "himalayas",
+  "jobgether",
+  "arbeitnow",
+  "googlejobs",
   "ziprecruiter",
   "monster",
   "indeed",
@@ -337,6 +357,10 @@ export const CSV_SOURCE_ORDER = [
   "jobicy",
   "remoteok",
   "wwr",
+  "himalayas",
+  "jobgether",
+  "arbeitnow",
+  "googlejobs",
   "ziprecruiter",
   "monster",
   "indeed",

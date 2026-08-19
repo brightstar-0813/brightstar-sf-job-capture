@@ -1,7 +1,8 @@
 /**
  * Capture Salesforce jobs from Dice, JobRight, Built In, company ATS boards
  * (Greenhouse / Lever / Ashby), Remotive, Jobicy, Remote OK, We Work Remotely,
- * ZipRecruiter, Monster, Indeed, and CareerBuilder. Task Scheduler / cron entrypoint.
+ * ZipRecruiter, Monster, Indeed, CareerBuilder, Himalayas, Jobgether,
+ * Arbeitnow, and optional Google Jobs (SerpAPI). Task Scheduler / cron entrypoint.
  */
 
 import { chromium } from "playwright";
@@ -22,6 +23,10 @@ import { searchRemotiveJobs } from "./remotive/search.js";
 import { searchJobicyJobs } from "./jobicy/search.js";
 import { searchRemoteokJobs } from "./remoteok/search.js";
 import { searchWwrJobs } from "./wwr/search.js";
+import { searchHimalayasJobs } from "./himalayas/search.js";
+import { searchJobgetherJobs } from "./jobgether/search.js";
+import { searchArbeitnowJobs } from "./arbeitnow/search.js";
+import { searchGoogleJobs } from "./googlejobs/search.js";
 import { captureRuleReason, looksSalesforceTitle } from "./filter.js";
 import {
   beginRun,
@@ -75,6 +80,10 @@ function enabledSources() {
   if (config.captureJobicy) out.push("jobicy");
   if (config.captureRemoteok) out.push("remoteok");
   if (config.captureWwr) out.push("wwr");
+  if (config.captureHimalayas) out.push("himalayas");
+  if (config.captureJobgether) out.push("jobgether");
+  if (config.captureArbeitnow) out.push("arbeitnow");
+  if (config.captureGooglejobs) out.push("googlejobs");
   if (config.captureZiprecruiter) out.push("ziprecruiter");
   if (config.captureMonster) out.push("monster");
   if (config.captureIndeed) out.push("indeed");
@@ -100,6 +109,10 @@ async function collectFeedJobs() {
   if (config.captureJobicy) runners.push(["jobicy", searchJobicyJobs]);
   if (config.captureRemoteok) runners.push(["remoteok", searchRemoteokJobs]);
   if (config.captureWwr) runners.push(["wwr", searchWwrJobs]);
+  if (config.captureHimalayas) runners.push(["himalayas", searchHimalayasJobs]);
+  if (config.captureJobgether) runners.push(["jobgether", searchJobgetherJobs]);
+  if (config.captureArbeitnow) runners.push(["arbeitnow", searchArbeitnowJobs]);
+  if (config.captureGooglejobs) runners.push(["googlejobs", searchGoogleJobs]);
   if (!runners.length) return [];
 
   const batches = await Promise.all(

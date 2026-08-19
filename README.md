@@ -1,6 +1,6 @@
 # Salesforce Job Capture (multi-source)
 
-Capture **remote Salesforce-ecosystem** jobs from Dice, JobRight, Built In, company career boards (Greenhouse / Lever / Ashby), Remotive, Jobicy, Remote OK, We Work Remotely, ZipRecruiter, Monster, Indeed, and CareerBuilder **twice daily (5:00 AM and 5:00 PM local time)**, append/dedupe locally, write **dated CSVs**, and Slack-notify on new jobs.
+Capture **remote Salesforce-ecosystem** jobs from Dice, JobRight, Built In, company career boards (Greenhouse / Lever / Ashby), Remotive, Jobicy, Remote OK, We Work Remotely, Himalayas, Jobgether, Arbeitnow, ZipRecruiter, Monster, Indeed, CareerBuilder, and optional Google Jobs **twice daily (5:00 AM and 5:00 PM local time)**, append/dedupe locally, write **dated CSVs**, and Slack-notify on new jobs.
 
 ## What gets saved
 
@@ -25,6 +25,8 @@ Filter (applied to all sources):
 | **Built In** | Scheduler (Playwright) | Remote + keyword search; skips listings whose titles aren't Salesforce-related |
 | **Greenhouse / Lever / Ashby** | Scheduler (public company-board APIs) | Direct from employer career sites — Salesforce ISVs, partners, and companies that hire SF admins/devs (`GREENHOUSE_BOARDS`, `LEVER_BOARDS`, `ASHBY_BOARDS`) |
 | **Remotive / Jobicy / Remote OK / We Work Remotely** | Scheduler (public JSON/RSS) | No browser; not Cloudflare-gated — extra recent remote listings |
+| **Himalayas / Jobgether / Arbeitnow** | Scheduler (public JSON APIs) | No browser. Jobgether’s offer API; Himalayas remote search. Arbeitnow is EU-heavy so few US hits. |
+| **Google Jobs** | Scheduler (SerpAPI, optional) | Google has no free Jobs API. Set `SERPAPI_KEY` to enable. |
 | **ZipRecruiter / Monster / Indeed / CareerBuilder** | Scheduler (Playwright) | Often Cloudflare/bot-blocked in headless — may return 0; expired listings are skipped |
 
 ### Optional: skip already-applied Dice jobs
@@ -36,6 +38,16 @@ npm run dice:login
 ```
 
 A browser opens — sign in, land on your dashboard, press Enter. The session is saved to `download/dice-auth.json` and reused on every run. When it expires you'll get a Slack alert to re-run `npm run dice:login` (Dice capture keeps working meanwhile, just without applied-job exclusion).
+
+### Indeed (Cloudflare)
+
+Indeed blocks headless Chrome until you complete their check once:
+
+```bash
+npm run indeed:login
+```
+
+A Chrome window opens. Pass the verification (sign in if asked) until Salesforce job cards are visible, then press Enter. Capture reuses `download/indeed-profile`. Re-run login when the log says Cloudflare challenge.
 
 ### Why the extension for JobRight?
 
@@ -103,9 +115,11 @@ Then load `extension/` unpacked in Chrome.
 | `CAPTURE_DICE` | `true`/`false` |
 | `CAPTURE_JOBRIGHT` | Playwright JobRight (`false` = use extension) |
 | `CAPTURE_REMOTIVE` / `CAPTURE_JOBICY` / `CAPTURE_REMOTEOK` / `CAPTURE_WWR` | Extra JSON/RSS sources (`true` by default) |
+| `CAPTURE_HIMALAYAS` / `CAPTURE_JOBGETHER` / `CAPTURE_ARBEITNOW` | Extra public JSON APIs (`true` by default) |
+| `CAPTURE_GOOGLEJOBS` / `SERPAPI_KEY` | Google Jobs via SerpAPI (skipped until a key is set) |
 | `CAPTURE_LEVER` / `CAPTURE_ASHBY` | Company career boards on Lever / Ashby (`true` by default) |
 | `GREENHOUSE_BOARDS` / `LEVER_BOARDS` / `ASHBY_BOARDS` | Comma-separated company board tokens to poll |
-| `CAPTURE_INDEED` / `CAPTURE_CAREERBUILDER` | Extra Playwright boards (`true` by default; often blocked) |
+| `CAPTURE_INDEED` / `CAPTURE_CAREERBUILDER` | Extra Playwright boards (`true` by default). Indeed needs `npm run indeed:login` |
 | `SEARCH_QUERIES` | Comma-separated Dice/Built In/Remotive searches (default includes Health Cloud, Data Cloud, Marketing Cloud, Service Cloud, Agentforce, OmniStudio, Salesforce CPQ) |
 | `JOBRIGHT_AUTH_PATH` | Playwright login state |
 | `CSV_PREFIX_DICE` / `CSV_PREFIX_JOBRIGHT` | Dated filename prefixes |
