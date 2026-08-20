@@ -280,6 +280,18 @@ export const config = {
   ),
   /** Open a visible Chrome window for Indeed (helps after Cloudflare). */
   indeedHeaded: bool("INDEED_HEADED", false),
+  /**
+   * Google Sheet bid tracker (applied / resume-built jobs). Capture skips any
+   * listing whose Link matches (URL or board id from the URL). Sheet must be
+   * link-readable.
+   */
+  bidTrackingSheetUrl: String(
+    process.env.BID_TRACKING_SHEET_URL ||
+      process.env.BID_TRACKING_SHEET_ID ||
+      "https://docs.google.com/spreadsheets/d/1UCHuLKjnEDvH-Q8NYBvspmyts0evq2lFT5ZQF_djmcE/edit?gid=0#gid=0"
+  ).trim(),
+  bidTrackingSheetGid: String(process.env.BID_TRACKING_SHEET_GID || "0").trim(),
+  excludeBidTrackingSheet: bool("EXCLUDE_BID_TRACKING_SHEET", true),
   jobrightMaxPages: Math.max(1, Number(process.env.JOBRIGHT_MAX_PAGES || process.env.MAX_PAGES || 5)),
   /**
    * JobRight search SEEDS (not title filters). A plain "Salesforce" query on

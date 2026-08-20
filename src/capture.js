@@ -37,7 +37,12 @@ import {
   getMeta,
   pruneStore,
   removeJobs,
+  removeJobsWhere,
 } from "./store.js";
+import {
+  loadBidTrackingExclusions,
+  isExcludedBySheet,
+} from "./sheet-exclude.js";
 import {
   notifyCaptureComplete,
   notifyJobrightLoginExpired,
@@ -45,11 +50,17 @@ import {
 } from "./slack.js";
 
 let running = false;
+let sheetExclusions = null;
 
 function ingestJobs(jobs, runId, counts, newJobs) {
   for (const job of jobs) {
     if (!job?.id) {
       counts.skippedCount += 1;
+      continue;
+    }
+    if (isExcludedBySheet(job, sheetExclusions)) {
+      counts.skippedCount += 1;
+      console.log(`[filter] skip ${job.id}: already on bid-tracking sheet`);
       continue;
     }
     const reason = captureRuleReason(job);
@@ -144,6 +155,16 @@ export async function runCapture({ skipSlack = false } = {}) {
 
   let browser;
   try {
+    sheetExclusions = null;
+    if (config.excludeBidTrackingSheet) {
+      sheetExclusions = await loadBidTrackingExclusions();
+      if (!sheetExclusions.ok) {
+        console.warn(
+          `[sheet] exclusions unavailable (${sheetExclusions.error}) — continuing without sheet filter`
+        );
+      }
+    }
+
     const feedPromise = collectFeedJobs();
 
     browser = await chromium.launch(browserLaunchOptions(config.headless));
@@ -254,6 +275,25 @@ export async function runCapture({ skipSlack = false } = {}) {
         `[capture] pruned ${pruned.removed} legacy jobs no longer matching rule`
       );
     }
+
+    if (sheetExclusions?.ok) {
+      const { removed } = removeJobsWhere((job) =>
+        isExcludedBySheet(job, sheetExclusions)
+      );
+      if (removed > 0) {
+        console.log(
+          `[capture] removed ${removed} jobs already on bid-tracking sheet`
+        );
+      }
+      // Don't Slack-notify "new" jobs that were on the sheet after all.
+      for (let i = newJobs.length - 1; i >= 0; i -= 1) {
+        if (isExcludedBySheet(newJobs[i], sheetExclusions)) {
+          newJobs.splice(i, 1);
+          counts.newCount = Math.max(0, counts.newCount - 1);
+        }
+      }
+    }
+
     const csvOut = syncCsv();
     console.log(
       `[capture] done — new=${counts.newCount} updated=${counts.updatedCount} skipped=${counts.skippedCount}`

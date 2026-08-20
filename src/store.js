@@ -380,6 +380,23 @@ export function removeJobs(ids) {
 }
 
 /**
+ * Remove every stored job for which predicate(job) is true.
+ * @param {(job: object) => boolean} predicate
+ */
+export function removeJobsWhere(predicate) {
+  const s = load();
+  let removed = 0;
+  for (const [id, job] of Object.entries(s.jobs)) {
+    if (predicate(job)) {
+      delete s.jobs[id];
+      removed += 1;
+    }
+  }
+  if (removed > 0) save();
+  return { removed, kept: Object.keys(s.jobs).length };
+}
+
+/**
  * Write one combined CSV with the latest qualifying jobs from all sources.
  * Overwrites `jobs_latest.csv` (or CSV_LATEST_FILE) each run.
  * @returns {{ csvPath: string, latestPath: string, count: number }}
