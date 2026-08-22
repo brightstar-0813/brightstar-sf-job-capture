@@ -14,10 +14,9 @@ import {
 } from "../feeds/keep.js";
 
 function queries() {
-  return (config.searchQueries?.length
+  return config.searchQueries?.length
     ? config.searchQueries
-    : [config.searchQ || "Salesforce"]
-  ).slice(0, 4);
+    : [config.searchQ || "Salesforce"];
 }
 
 function locationText(j) {
@@ -62,26 +61,33 @@ export async function searchHimalayasJobs() {
   const kept = [];
   const counts = emptySkipCounts();
   let scanned = 0;
+  const pagesPerQuery = Math.min(3, config.searchExtraPages || 2);
 
   for (const q of queries()) {
-    const params = new URLSearchParams();
-    params.set("q", q);
-    params.set("sort", "recent");
-    params.set("page", "1");
-    const url = `https://himalayas.app/jobs/api/search?${params.toString()}`;
-    console.log(`[himalayas] ${url}`);
-    const res = await tryGetJson(url, { timeoutMs: 25000 });
-    if (!res.ok) {
-      console.warn(`[himalayas] query "${q}" HTTP ${res.status}`);
-      continue;
-    }
-    const list = Array.isArray(res.json?.jobs) ? res.json.jobs : [];
-    for (const raw of list) {
-      const job = mapJob(raw);
-      if (!job.id || seen.has(job.id)) continue;
-      seen.add(job.id);
-      scanned += 1;
-      if (keepFeedJob(job, counts)) kept.push(job);
+    for (let page = 1; page <= pagesPerQuery; page += 1) {
+      const params = new URLSearchParams();
+      params.set("q", q);
+      params.set("sort", "recent");
+      params.set("page", String(page));
+      const url = `https://himalayas.app/jobs/api/search?${params.toString()}`;
+      console.log(`[himalayas] ${url}`);
+      const res = await tryGetJson(url, { timeoutMs: 25000 });
+      if (!res.ok) {
+        console.warn(`[himalayas] query "${q}" page ${page} HTTP ${res.status}`);
+        break;
+      }
+      const list = Array.isArray(res.json?.jobs) ? res.json.jobs : [];
+      if (!list.length) break;
+      let newOnPage = 0;
+      for (const raw of list) {
+        const job = mapJob(raw);
+        if (!job.id || seen.has(job.id)) continue;
+        seen.add(job.id);
+        scanned += 1;
+        newOnPage += 1;
+        if (keepFeedJob(job, counts)) kept.push(job);
+      }
+      if (newOnPage === 0) break;
     }
   }
 

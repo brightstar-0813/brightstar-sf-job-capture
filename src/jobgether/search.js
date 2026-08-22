@@ -58,7 +58,7 @@ export async function searchJobgetherJobs() {
   const counts = emptySkipCounts();
   let scanned = 0;
   const pageSize = 15;
-  const maxPages = 6;
+  const maxPages = 20;
 
   for (let page = 0; page < maxPages; page += 1) {
     const params = new URLSearchParams();
