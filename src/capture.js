@@ -250,7 +250,7 @@ export async function runCapture({ skipSlack = false } = {}) {
       ingestJobs(feedJobs, runId, counts, newJobs);
     }
 
-    // JobRight last — CSV also places JobRight rows at the bottom.
+    // JobRight last among browser sources (CSV still puts <24h posts first overall).
     if (config.captureJobright) {
       await runNamedSource("jobright", async () => {
         const { jobs: jrJobs, auth, appliedIds } = await searchJobrightJobs(browser);

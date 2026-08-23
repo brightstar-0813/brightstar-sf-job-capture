@@ -1,6 +1,6 @@
 /**
- * JobRight.ai Salesforce search — keep APPLY WITH AUTOFILL only
- * (skip APPLY NOW / LinkedIn redirects).
+ * JobRight.ai Salesforce search — remote US roles via recommend/search API.
+ * LinkedIn / company-site apply URLs are kept (preferred in store dedupe).
  *
  * Jobs load via POST /swan/recommend/search (not __NEXT_DATA__.jobList).
  */
@@ -11,7 +11,6 @@ import { contextOptions as playwrightContext } from "../browser.js";
 import {
   containsSalesforce,
   isSalesforceEmployer,
-  isLinkedinLink,
   isRemoteArrangement,
   parsePostedDate,
   isWithinRecentDays,
@@ -67,10 +66,20 @@ function mapApiJob(item) {
   if (!id) return null;
 
   const salary = parseSalary(jr.salaryDesc);
-  const url = (
+  const applyLink = String(jr.applyLink || jr.originalUrl || "").trim();
+  const fallbackUrl = (
     jr.url ||
     `https://jobright.ai/jobs/info/${jr.jobId}`
   ).split("?")[0];
+  // Prefer LinkedIn / company-site apply links (source priority) over JobRight page.
+  const preferApply =
+    applyLink &&
+    (/linkedin\.com/i.test(applyLink) ||
+      jr.isCompanySiteLink === true ||
+      /greenhouse\.io|jobs\.lever\.co|ashbyhq\.com|indeed\.com|dice\.com/i.test(
+        applyLink
+      ));
+  const url = (preferApply ? applyLink : fallbackUrl).split("?")[0];
 
   // Prefer the absolute epoch publishTime; fall back to the relative desc.
   const postedAbs = parsePostedDate(jr.publishTime) || parsePostedDate(jr.publishTimeDesc);
@@ -102,7 +111,7 @@ function mapApiJob(item) {
     url,
     description: buildDescription(jr),
     _easyApply: jr.jobtargetEasyapply === true,
-    _applyLink: String(jr.applyLink || jr.originalUrl || ""),
+    _applyLink: applyLink,
     _isCompanySite: jr.isCompanySiteLink === true,
     _expired: jr.isDeleted === true || jr.hiddenJob === true,
   };
@@ -111,14 +120,6 @@ function mapApiJob(item) {
 function isSalesforceJob(mapped) {
   if (isSalesforceEmployer(mapped.organization)) return false;
   return containsSalesforce(mapped.title, mapped.description);
-}
-
-/**
- * Exclude jobs whose apply/job link points to LinkedIn (redirect applications
- * we don't want). Everything else from the API is accepted.
- */
-function isLinkedinApply(mapped) {
-  return isLinkedinLink(mapped._applyLink, mapped.url);
 }
 
 /**
@@ -249,7 +250,6 @@ export async function searchJobrightJobs(browser) {
   const page = await context.newPage();
   const all = [];
   const seen = new Set();
-  let linkedinSkipped = 0;
   let employerSkipped = 0;
   let nonRemoteSkipped = 0;
   let nonSalesforceSkipped = 0;
@@ -313,10 +313,6 @@ export async function searchJobrightJobs(browser) {
           appliedSkipped += 1;
           continue;
         }
-        if (isLinkedinApply(mapped)) {
-          linkedinSkipped += 1;
-          continue;
-        }
         if (isSalesforceEmployer(mapped.organization)) {
           employerSkipped += 1;
           continue;
@@ -353,7 +349,7 @@ export async function searchJobrightJobs(browser) {
   console.log(
     `[jobright] kept ${all.length} remote Salesforce jobs` +
       ` (titles=${titles.length}, api=${apiCount}, okQueries=${queryOkCount}/${titles.length},` +
-      ` skipped LinkedIn=${linkedinSkipped}, skipped Salesforce-employer=${employerSkipped},` +
+      ` skipped Salesforce-employer=${employerSkipped},` +
       ` skipped non-remote=${nonRemoteSkipped}, skipped non-Salesforce=${nonSalesforceSkipped},` +
       ` skipped already-applied=${appliedSkipped}, skipped expired=${expiredSkipped},` +
       ` skipped stale(>${config.recentDays}d)=${staleSkipped})`

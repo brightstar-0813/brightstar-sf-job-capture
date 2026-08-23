@@ -1,8 +1,12 @@
 import fs from "fs";
 import path from "path";
-import { config, CSV_HEADERS, SOURCE_IDS, CSV_SOURCE_ORDER } from "./config.js";
+import { config, CSV_HEADERS, SOURCE_IDS, SOURCE_PRIORITY } from "./config.js";
 import { writeCsv } from "./csv.js";
-import { matchesCaptureRule, isRecentJob } from "./filter.js";
+import {
+  matchesCaptureRule,
+  isRecentJob,
+  parsePostedDate,
+} from "./filter.js";
 
 /** Career-board sources: still listed = still open, even if date_posted is old. */
 const ATS_SOURCES = new Set(["greenhouse", "lever", "ashby"]);
@@ -64,7 +68,52 @@ function sourceFromId(id) {
   return SOURCE_IDS.includes(prefix) ? prefix : "";
 }
 
+function hasLinkedinUrl(job) {
+  return /linkedin\.com/i.test(String(job?.url || ""));
+}
+
+/** Infer board from apply/view URL (e.g. JobRight → Greenhouse link). */
+function sourceHintFromUrl(url) {
+  const u = String(url || "").toLowerCase();
+  if (!u) return "";
+  if (/boards\.greenhouse\.io|greenhouse\.io/.test(u)) return "greenhouse";
+  if (/jobs\.lever\.co/.test(u)) return "lever";
+  if (/jobs\.ashbyhq\.com|ashbyhq\.com/.test(u)) return "ashby";
+  if (/indeed\.com/.test(u)) return "indeed";
+  if (/dice\.com/.test(u)) return "dice";
+  if (/ziprecruiter\.com/.test(u)) return "ziprecruiter";
+  if (/glassdoor\.com/.test(u)) return "glassdoor";
+  if (/builtin\.com/.test(u)) return "builtin";
+  if (/monster\.com/.test(u)) return "monster";
+  if (/careerbuilder\.com/.test(u)) return "careerbuilder";
+  return "";
+}
+
+/**
+ * Lower = better. LinkedIn apply/view links beat every board.
+ * Then company ATS → Indeed → Dice → Zip → … → JobRight.
+ */
+export function sourcePriorityRank(job) {
+  if (hasLinkedinUrl(job)) return -1;
+  const src = String(
+    sourceHintFromUrl(job?.url) ||
+      job?.source ||
+      sourceFromId(job?.id) ||
+      ""
+  ).toLowerCase();
+  const idx = SOURCE_PRIORITY.indexOf(src);
+  return idx === -1 ? SOURCE_PRIORITY.length : idx;
+}
+
 function preferJob(a, b) {
+  const pa = sourcePriorityRank(a);
+  const pb = sourcePriorityRank(b);
+  if (pa !== pb) return pa < pb ? a : b;
+
+  const aLi = hasLinkedinUrl(a);
+  const bLi = hasLinkedinUrl(b);
+  if (aLi !== bLi) return aLi ? a : b;
+
   const aDesc = String(a.description || "").length;
   const bDesc = String(b.description || "").length;
   if (bDesc !== aDesc) return bDesc > aDesc ? b : a;
@@ -274,19 +323,32 @@ export function upsertJob(scraped, runId) {
   if (!existing) {
     const twin = findJobByFingerprint(s.jobs, jobFingerprint(base), id);
     if (twin) {
+      const winner = preferJob(twin, base);
       const merged = {
-        ...twin,
-        ...base,
-        id: twin.id,
-        source: sourceFromId(twin.id) || twin.source || base.source,
-        url: twin.url || base.url,
+        ...winner,
+        id: winner.id,
+        source:
+          sourceFromId(winner.id) ||
+          winner.source ||
+          twin.source ||
+          base.source,
+        url: winner.url || twin.url || base.url,
+        description:
+          String(winner.description || "").length >=
+          String(twin.description || "").length
+            ? winner.description
+            : twin.description || base.description,
+        date_posted: winner.date_posted || twin.date_posted || base.date_posted,
         first_seen_run_id: twin.first_seen_run_id,
         last_seen_run_id: runId,
         first_seen_at: twin.first_seen_at,
         last_seen_at: now,
         status: "updated",
       };
-      s.jobs[twin.id] = merged;
+      if (winner.id !== twin.id) {
+        delete s.jobs[twin.id];
+      }
+      s.jobs[merged.id] = merged;
       save();
       return { status: "updated", job: merged };
     }
@@ -402,16 +464,28 @@ export function removeJobsWhere(predicate) {
  * @returns {{ csvPath: string, latestPath: string, count: number }}
  */
 function csvSourceRank(job) {
-  if (isJobrightJob(job)) {
-    return CSV_SOURCE_ORDER.length + 1;
-  }
-  const src = String(job?.source || "").toLowerCase();
-  const idx = CSV_SOURCE_ORDER.indexOf(src);
-  return idx === -1 ? CSV_SOURCE_ORDER.length : idx;
+  return sourcePriorityRank(job);
+}
+
+/** Prefer absolute posted date; fall back to first/last seen for sorting. */
+function jobPostedAtMs(job) {
+  const posted = parsePostedDate(job?.date_posted);
+  if (posted) return posted.getTime();
+  const seen = Date.parse(job?.first_seen_at || job?.last_seen_at || "");
+  return Number.isFinite(seen) ? seen : 0;
+}
+
+function isPostedWithinHours(job, hours, now = new Date()) {
+  const posted = parsePostedDate(job?.date_posted, now);
+  if (!posted) return false;
+  const ageMs = now.getTime() - posted.getTime();
+  if (ageMs < 0) return true;
+  return ageMs <= hours * 60 * 60 * 1000;
 }
 
 export function syncCsv(rows = null) {
   const all = rows || allJobs();
+  const now = new Date();
   const clean = (all || [])
     .filter((j) => matchesOutputRule(j))
     .map((j) => {
@@ -419,13 +493,20 @@ export function syncCsv(rows = null) {
       const idSrc = sourceFromId(j.id);
       return idSrc && idSrc !== j.source ? { ...j, source: idSrc } : j;
     });
-  // Non-JobRight sources first; JobRight always last (id/url/source).
-  // Within a source, newest first.
+  // Fresh (<24h) first → newest posted → preferred source (company/Indeed/Dice…).
   clean.sort((a, b) => {
+    const aFresh = isPostedWithinHours(a, 24, now) ? 0 : 1;
+    const bFresh = isPostedWithinHours(b, 24, now) ? 0 : 1;
+    if (aFresh !== bFresh) return aFresh - bFresh;
+
+    const byPosted = jobPostedAtMs(b) - jobPostedAtMs(a);
+    if (byPosted !== 0) return byPosted;
+
     const bySource = csvSourceRank(a) - csvSourceRank(b);
     if (bySource !== 0) return bySource;
-    return String(b.last_seen_at || b.date_posted || "").localeCompare(
-      String(a.last_seen_at || a.date_posted || "")
+
+    return String(b.last_seen_at || "").localeCompare(
+      String(a.last_seen_at || "")
     );
   });
 

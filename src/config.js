@@ -358,27 +358,36 @@ export const SOURCE_IDS = [
   "careerbuilder",
 ];
 
-/** CSV row order — JobRight last so those jobs sit at the bottom of jobs_latest.csv. */
-export const CSV_SOURCE_ORDER = [
-  "dice",
-  "builtin",
+/**
+ * Preferred posting when the same role appears on several boards
+ * (Salesforce priority: company careers → Indeed → Dice → Zip → …).
+ * LinkedIn URLs win even if source is another board.
+ * Lower index = higher priority.
+ */
+export const SOURCE_PRIORITY = [
   "greenhouse",
   "lever",
   "ashby",
+  "indeed",
+  "dice",
+  "ziprecruiter",
+  "glassdoor",
+  "builtin",
+  "careerbuilder",
+  "monster",
+  "jobgether",
+  "himalayas",
   "remotive",
   "jobicy",
   "remoteok",
   "wwr",
-  "himalayas",
-  "jobgether",
   "arbeitnow",
   "googlejobs",
-  "ziprecruiter",
-  "monster",
-  "indeed",
-  "careerbuilder",
   "jobright",
 ];
+
+/** CSV row order for older jobs — mirrors SOURCE_PRIORITY. */
+export const CSV_SOURCE_ORDER = [...SOURCE_PRIORITY];
 
 export const CSV_HEADERS = [
   "id",

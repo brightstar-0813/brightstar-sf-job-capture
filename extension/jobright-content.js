@@ -133,7 +133,16 @@ function mapItem(item, applyLabel) {
   const company = item?.companyResult || {};
   if (!jr.jobId) return null;
   const salary = parseSalary(jr.salaryDesc);
-  const url = (`https://jobright.ai/jobs/info/${jr.jobId}`).split("?")[0];
+  const applyLink = String(jr.applyLink || jr.originalUrl || "").trim();
+  const fallbackUrl = (`https://jobright.ai/jobs/info/${jr.jobId}`).split("?")[0];
+  const preferApply =
+    applyLink &&
+    (/linkedin\.com/i.test(applyLink) ||
+      jr.isCompanySiteLink === true ||
+      /greenhouse\.io|jobs\.lever\.co|ashbyhq\.com|indeed\.com|dice\.com/i.test(
+        applyLink
+      ));
+  const url = (preferApply ? applyLink : fallbackUrl).split("?")[0];
   const postedAbs =
     parsePostedDate(jr.publishTime) || parsePostedDate(jr.publishTimeDesc);
   const datePosted = postedAbs
@@ -161,16 +170,10 @@ function mapItem(item, applyLabel) {
     description: buildDescription(jr),
     applyLabel,
     jobtargetEasyapply: jr.jobtargetEasyapply === true,
-    _applyLink: String(jr.applyLink || jr.originalUrl || ""),
+    _applyLink: applyLink,
     _isCompanySite: jr.isCompanySiteLink === true,
     _expired: jr.isDeleted === true || jr.hiddenJob === true,
   };
-}
-
-function isLinkedinApply(mapped) {
-  const link = String(mapped._applyLink || "");
-  const url = String(mapped.url || "");
-  return /linkedin\.com/i.test(link) || /linkedin\.com/i.test(url);
 }
 
 function isSalesforceJob(mapped) {
@@ -292,7 +295,6 @@ async function scrapeJobrightJobs(titles) {
 
   const byId = new Map();
   let apiCount = 0;
-  let skippedLinkedin = 0;
   let skippedApplied = 0;
   let skippedStale = 0;
   let skippedExpired = 0;
@@ -329,10 +331,6 @@ async function scrapeJobrightJobs(titles) {
       }
       if (appliedIds.has(mapped.id)) {
         skippedApplied += 1;
-        continue;
-      }
-      if (isLinkedinApply(mapped)) {
-        skippedLinkedin += 1;
         continue;
       }
       if (!isRemoteArrangement(mapped.work_arrangement)) continue;
@@ -374,7 +372,6 @@ async function scrapeJobrightJobs(titles) {
       okQueries,
       titles: listTitles.length,
       kept: kept.length,
-      skippedLinkedin,
       skippedApplied,
       skippedStale,
       skippedExpired,

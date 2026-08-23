@@ -6,14 +6,16 @@ Capture **remote Salesforce-ecosystem** jobs from Dice, JobRight, Built In, comp
 
 Each run overwrites **one** combined CSV with the latest qualifying jobs from all sources:
 
-- `download/jobs_latest.csv` — all sources together (`source` column marks Dice / JobRight / Built In / …)
+- `download/jobs_latest.csv` — all sources together (`source` column marks Dice / JobRight / Built In / …). Rows posted in the last **24 hours** are sorted to the top (newest first); then by preferred source (company careers → Indeed → Dice → … → JobRight).
 - `download/store.json` — shared dedupe history
+
+**Source priority (same title+company):** LinkedIn URL → Greenhouse/Lever/Ashby → Indeed → Dice → ZipRecruiter → Glassdoor → Built In → other aggregators → JobRight. LinkedIn isn’t scraped directly; when JobRight (or another board) exposes a LinkedIn apply link, that URL is kept and wins dedupe.
 
 Filter (applied to all sources):
 
 - **Keep:** the job is a **Salesforce-ecosystem** role — title or JD matches product keywords such as `Salesforce`, `Health Cloud`, `Data Cloud`, `Marketing Cloud`, `Service Cloud`, `Agentforce`, `OmniStudio`, `SFMC`, `NPSP`, `MuleSoft`, and similar — the job is **remote only** (not hybrid/on-site), location is US/worldwide (not Canada-only or EMEA/LATAM-only), and it was **posted within the last `RECENT_DAYS` days** (default 3 in code; use 7 in `.env` for apply-now freshness).
 - A single passing CRM name-drop in a generic JD (`experience with Salesforce, HubSpot, or Dynamics`) is **not** enough; Salesforce must be in the title, a named product must appear, or Salesforce must be a primary skill.
-- **Skip:** jobs at the **Salesforce** company itself, **hybrid/on-site** roles, **LinkedIn** apply/redirect links, **expired / no-longer-available** postings (Dice banner text; JobRight `isDeleted`/`hiddenJob`), and postings **older than `RECENT_DAYS`** (they also age out of the store/CSVs on each run).
+- **Skip:** jobs at the **Salesforce** company itself, **hybrid/on-site** roles, **expired / no-longer-available** postings (Dice banner text; JobRight `isDeleted`/`hiddenJob`), and postings **older than `RECENT_DAYS`** (they also age out of the store/CSVs on each run).
 - **Skip (already applied / resume built):** jobs whose **Link** is already on the bid-tracking Google Sheet (`BID_TRACKING_SHEET_URL`) — matched by URL / board job id — plus jobs you've already applied to on JobRight / Dice.
 
 ## How automation is split (recommended)
@@ -27,7 +29,7 @@ Filter (applied to all sources):
 | **Remotive / Jobicy / Remote OK / We Work Remotely** | Scheduler (public JSON/RSS) | No browser; not Cloudflare-gated — extra recent remote listings |
 | **Himalayas / Jobgether / Arbeitnow** | Scheduler (public JSON APIs) | No browser. Jobgether’s offer API; Himalayas remote search. Arbeitnow is EU-heavy so few US hits. |
 | **Google Jobs** | Scheduler (SerpAPI, optional) | Google has no free Jobs API. Set `SERPAPI_KEY` to enable. |
-| **ZipRecruiter / Monster / Indeed / CareerBuilder** | Scheduler (Playwright) | Often Cloudflare/bot-blocked in headless — may return 0; expired listings are skipped |
+| **ZipRecruiter / Monster / Indeed / CareerBuilder** | Scheduler (Playwright) | Often Cloudflare/bot-blocked in headless — may return 0; expired listings are skipped. Indeed searches all `SEARCH_QUERIES` (deep pages on first query) after `npm run indeed:login` |
 
 ### Optional: skip already-applied Dice jobs
 

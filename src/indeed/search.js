@@ -249,7 +249,11 @@ export async function searchIndeedJobs(browser) {
   let context;
   const kept = [];
   const seen = new Set();
-  const queries = (config.searchQueries || [config.searchQ]).slice(0, 4);
+  // All SEARCH_QUERIES (same list as Dice) — first query deep-pages, rest shallower.
+  const queries =
+    config.searchQueries?.length > 0
+      ? config.searchQueries
+      : [config.searchQ];
 
   try {
     if (useProfile) {
@@ -276,7 +280,10 @@ export async function searchIndeedJobs(browser) {
 
     for (let qi = 0; qi < queries.length; qi += 1) {
       const q = queries[qi];
-      const pages = qi === 0 ? Math.min(3, config.searchExtraPages || 2) : 1;
+      const pages =
+        qi === 0
+          ? Math.max(1, Math.min(config.maxPages || 8, 12))
+          : Math.max(1, Math.min(config.searchExtraPages || 3, 5));
       for (let p = 0; p < pages; p += 1) {
         const url = buildSearchUrl(q, p * 10);
         console.log(`[indeed] q="${q}" page ${p + 1}/${pages}: ${url}`);
