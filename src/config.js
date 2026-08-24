@@ -338,6 +338,7 @@ export function pagesForSearchQuery(index) {
 
 /** Known capture source ids (used for status counts). */
 export const SOURCE_IDS = [
+  "linkedin",
   "dice",
   "jobright",
   "builtin",
@@ -365,6 +366,7 @@ export const SOURCE_IDS = [
  * Lower index = higher priority.
  */
 export const SOURCE_PRIORITY = [
+  "linkedin",
   "greenhouse",
   "lever",
   "ashby",

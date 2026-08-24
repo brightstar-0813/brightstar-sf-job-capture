@@ -89,8 +89,8 @@ app.post("/api/run", async (_req, res) => {
 });
 
 /**
- * Extension ingest — JobRight jobs scraped from the logged-in Chrome session.
- * Body: { source?: 'jobright', jobs: [...] }
+ * Extension ingest — jobs scraped from a logged-in Chrome session.
+ * Body: { source?: 'jobright'|'linkedin', jobs: [...] }
  */
 app.post("/api/ingest", async (req, res) => {
   try {

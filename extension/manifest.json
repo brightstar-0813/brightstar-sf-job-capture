@@ -1,14 +1,16 @@
 {
   "manifest_version": 3,
   "name": "Salesforce Remote Job Capture",
-  "description": "Trigger local capture + scrape JobRight from your logged-in Chrome session daily at 5 AM and 5 PM. Jobs land in one combined jobs_latest.csv.",
-  "version": "1.2.5",
+  "description": "Capture remote Salesforce jobs from JobRight and LinkedIn using your logged-in Chrome session. Jobs land in one combined jobs_latest.csv.",
+  "version": "1.3.0",
   "permissions": ["storage", "alarms", "tabs", "scripting"],
   "host_permissions": [
     "http://127.0.0.1:3847/*",
     "http://localhost:3847/*",
     "https://jobright.ai/*",
-    "https://www.jobright.ai/*"
+    "https://www.jobright.ai/*",
+    "https://linkedin.com/*",
+    "https://www.linkedin.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -17,6 +19,11 @@
     {
       "matches": ["https://jobright.ai/*", "https://www.jobright.ai/*"],
       "js": ["jobright-content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://linkedin.com/jobs/*", "https://www.linkedin.com/jobs/*"],
+      "js": ["linkedin-content.js"],
       "run_at": "document_idle"
     }
   ],

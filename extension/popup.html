@@ -10,18 +10,20 @@
       <h1>Salesforce Remote Job Capture</h1>
       <p id="statusLine" class="muted">Connecting…</p>
       <p id="jrLine" class="muted"></p>
+      <p id="liLine" class="muted"></p>
     </header>
 
     <div class="actions">
       <button type="button" id="btnRunDice">Run capture (API)</button>
       <button type="button" id="btnRunJr">Capture JobRight</button>
+      <button type="button" id="btnRunLi">Capture LinkedIn</button>
       <button type="button" id="btnRefresh" class="secondary">Refresh</button>
       <a id="btnExport" class="button secondary" href="#">Export CSV</a>
     </div>
 
     <p id="message" class="message" hidden></p>
     <p class="hint muted">
-      JobRight uses this Chrome login (stay signed in on jobright.ai). Full multi-site capture runs via local API / Task Scheduler.
+      JobRight and LinkedIn use this Chrome login. LinkedIn keeps external Apply jobs only and never applies for you. Full multi-site capture runs via local API / Task Scheduler.
       Keep <code>npm start</code> running for ingest. Export is one combined <code>jobs_latest.csv</code>.
     </p>
 

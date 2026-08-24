@@ -1,12 +1,16 @@
 /**
- * Background: schedule JobRight scrape daily at 5:00 AM and 5:00 PM (local time)
- * using the user's logged-in Chrome session (no Playwright login file needed).
+ * Background: schedule JobRight and LinkedIn scrapes daily at 5:00 AM and
+ * 5:00 PM (local time) using the user's logged-in Chrome session.
  */
 
 const API = "http://127.0.0.1:3847";
-const ALARM = "jobright-capture-daily";
-const LEGACY_ALARMS = ["jobright-capture-8h", "jobright-capture-12h"];
-/** Local hours (24h) when JobRight capture runs — 5 AM and 5 PM. */
+const ALARM = "salesforce-capture-daily";
+const LEGACY_ALARMS = [
+  "jobright-capture-daily",
+  "jobright-capture-8h",
+  "jobright-capture-12h",
+];
+/** Local hours (24h) when extension capture runs — 5 AM and 5 PM. */
 const RUN_HOURS = [5, 17];
 
 /** Same role-family seeds as Playwright JOBRIGHT_TITLES (not title filters). */
@@ -41,6 +45,17 @@ function buildSearchUrl(query = "Salesforce Administrator") {
     `https://jobright.ai/jobs/search?visit=search&value=${value}` +
     `&searchType=job_title&country=US&jobTaxonomyList=${taxonomy}`
   );
+}
+
+function buildLinkedinSearchUrl(query = "Salesforce") {
+  const params = new URLSearchParams({
+    keywords: query,
+    location: "United States",
+    f_WT: "2",
+    f_TPR: "r604800",
+    sortBy: "DD",
+  });
+  return `https://www.linkedin.com/jobs/search/?${params.toString()}`;
 }
 
 async function apiPost(path, body) {
@@ -119,6 +134,17 @@ async function ensureContentScript(tabId) {
   }
 }
 
+async function ensureLinkedinContentScript(tabId) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["linkedin-content.js"],
+    });
+  } catch {
+    /* already injected or page not ready */
+  }
+}
+
 async function scrapeTab(tabId, titles) {
   let lastErr = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -155,6 +181,29 @@ async function scrapeTab(tabId, titles) {
   throw new Error(
     lastErr?.message ||
       "Could not reach JobRight content script (reload the extension and stay signed in on jobright.ai)"
+  );
+}
+
+async function scrapeLinkedinTab(tabId) {
+  let lastErr = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await ensureLinkedinContentScript(tabId);
+    await sleep(1000 + attempt * 500);
+    try {
+      const result = await chrome.tabs.sendMessage(tabId, {
+        type: "SCRAPE_LINKEDIN_V1",
+        options: { maxJobs: 60, maxScrolls: 12 },
+      });
+      if (result?.ok) return result;
+      lastErr = new Error(result?.error || "LinkedIn scrape failed");
+      if (/not signed in/i.test(lastErr.message)) break;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw new Error(
+    lastErr?.message ||
+      "Could not reach LinkedIn content script (reload the extension and stay signed in on linkedin.com)"
   );
 }
 
@@ -203,6 +252,85 @@ async function captureJobrightFromChrome() {
   }
 }
 
+/**
+ * Open a remote-US LinkedIn Jobs search, scrape external-Apply listings, ingest,
+ * and close the temporary tab. This never clicks an Apply button.
+ */
+async function captureLinkedinFromChrome() {
+  const stored = await chrome.storage.local.get(["linkedinQuery"]);
+  const query = String(stored.linkedinQuery || "Salesforce").trim() || "Salesforce";
+  const tab = await chrome.tabs.create({
+    url: buildLinkedinSearchUrl(query),
+    active: false,
+  });
+  const tabId = tab.id;
+
+  try {
+    await waitForTabComplete(tabId, 45000);
+    await sleep(5000);
+    const result = await scrapeLinkedinTab(tabId);
+    const ingest = await apiPost("/api/ingest", {
+      source: "linkedin",
+      trusted: true,
+      jobs: result.jobs || [],
+    });
+
+    await chrome.storage.local.set({
+      lastLinkedinCapture: {
+        at: new Date().toISOString(),
+        stats: result.stats,
+        ingest,
+      },
+      lastLinkedinError: null,
+    });
+    return { ok: true, stats: result.stats, ingest };
+  } finally {
+    try {
+      if (tabId != null) await chrome.tabs.remove(tabId);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+async function runWithStoredError(capture, errorKey, label) {
+  try {
+    return await capture();
+  } catch (err) {
+    console.error(`[${label}]`, err);
+    await chrome.storage.local.set({
+      [errorKey]: {
+        at: new Date().toISOString(),
+        error: String(err.message || err),
+      },
+    });
+    throw err;
+  }
+}
+
+async function captureScheduledSources() {
+  const results = {};
+  try {
+    results.jobright = await runWithStoredError(
+      captureJobrightFromChrome,
+      "lastJobrightError",
+      "jobright alarm"
+    );
+  } catch {
+    /* continue so one source cannot prevent the other */
+  }
+  try {
+    results.linkedin = await runWithStoredError(
+      captureLinkedinFromChrome,
+      "lastLinkedinError",
+      "linkedin alarm"
+    );
+  } catch {
+    /* per-source error already stored */
+  }
+  return results;
+}
+
 function nextRunMs(from = new Date()) {
   const now = from.getTime();
   for (let dayOffset = 0; dayOffset <= 1; dayOffset += 1) {
@@ -245,16 +373,7 @@ chrome.runtime.onStartup.addListener(() => {
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== ALARM) return;
-  captureJobrightFromChrome()
-    .catch((err) => {
-      console.error("[jobright alarm]", err);
-      chrome.storage.local.set({
-        lastJobrightError: {
-          at: new Date().toISOString(),
-          error: String(err.message || err),
-        },
-      });
-    })
+  captureScheduledSources()
     .finally(() => {
       scheduleNextAlarm();
     });
@@ -262,7 +381,11 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "CAPTURE_JOBRIGHT_NOW") {
-    captureJobrightFromChrome()
+    runWithStoredError(
+      captureJobrightFromChrome,
+      "lastJobrightError",
+      "jobright manual"
+    )
       .then((r) => sendResponse(r))
       .catch((err) => sendResponse({ ok: false, error: err.message }));
     return true;
@@ -270,6 +393,22 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "GET_JOBRIGHT_STATUS") {
     chrome.storage.local
       .get(["lastJobrightCapture", "lastJobrightError"])
+      .then((data) => sendResponse({ ok: true, ...data }));
+    return true;
+  }
+  if (msg?.type === "CAPTURE_LINKEDIN_NOW") {
+    runWithStoredError(
+      captureLinkedinFromChrome,
+      "lastLinkedinError",
+      "linkedin manual"
+    )
+      .then((r) => sendResponse(r))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+  if (msg?.type === "GET_LINKEDIN_STATUS") {
+    chrome.storage.local
+      .get(["lastLinkedinCapture", "lastLinkedinError"])
       .then((data) => sendResponse({ ok: true, ...data }));
     return true;
   }

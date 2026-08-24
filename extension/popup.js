@@ -2,10 +2,12 @@ const API = "http://127.0.0.1:3847";
 
 const statusLine = document.getElementById("statusLine");
 const jrLine = document.getElementById("jrLine");
+const liLine = document.getElementById("liLine");
 const jobList = document.getElementById("jobList");
 const messageEl = document.getElementById("message");
 const btnRunDice = document.getElementById("btnRunDice");
 const btnRunJr = document.getElementById("btnRunJr");
+const btnRunLi = document.getElementById("btnRunLi");
 const btnRefresh = document.getElementById("btnRefresh");
 const btnExport = document.getElementById("btnExport");
 
@@ -100,17 +102,39 @@ async function refreshJrStatus() {
     const data = await chrome.runtime.sendMessage({ type: "GET_JOBRIGHT_STATUS" });
     const last = data?.lastJobrightCapture;
     const err = data?.lastJobrightError;
-    if (last?.at) {
+    if (err?.at && (!last?.at || err.at > last.at)) {
+      jrLine.textContent = `JobRight ext error: ${err.error}`;
+    } else if (last?.at) {
       const kept = last.stats?.kept ?? last.ingest?.newCount ?? "?";
       jrLine.textContent = `JobRight ext last: ${last.at} · kept ${kept}`;
-    } else if (err?.at) {
-      jrLine.textContent = `JobRight ext error: ${err.error}`;
     } else {
       jrLine.textContent =
         "JobRight ext: no capture yet (runs daily at 5 AM and 5 PM while Chrome is open)";
     }
   } catch {
     jrLine.textContent = "";
+  }
+}
+
+async function refreshLinkedinStatus() {
+  try {
+    const data = await chrome.runtime.sendMessage({ type: "GET_LINKEDIN_STATUS" });
+    const last = data?.lastLinkedinCapture;
+    const err = data?.lastLinkedinError;
+    if (err?.at && (!last?.at || err.at > last.at)) {
+      liLine.textContent = `LinkedIn ext error: ${err.error}`;
+    } else if (last?.at) {
+      const kept = last.stats?.kept ?? last.ingest?.newCount ?? "?";
+      const externalSkipped = last.stats?.noExternalApply ?? 0;
+      liLine.textContent =
+        `LinkedIn ext last: ${last.at} · kept ${kept}` +
+        ` · no external Apply ${externalSkipped}`;
+    } else {
+      liLine.textContent =
+        "LinkedIn ext: no capture yet (external Apply only; runs at 5 AM and 5 PM)";
+    }
+  } catch {
+    liLine.textContent = "";
   }
 }
 
@@ -128,6 +152,7 @@ async function refresh() {
     showMessage(err.message || "Cannot reach local API", true);
   }
   await refreshJrStatus();
+  await refreshLinkedinStatus();
 }
 
 btnRefresh.addEventListener("click", () => refresh());
@@ -163,6 +188,28 @@ btnRunJr.addEventListener("click", async () => {
     showMessage(err.message || "JobRight capture failed", true);
   } finally {
     btnRunJr.disabled = false;
+  }
+});
+
+btnRunLi.addEventListener("click", async () => {
+  showMessage("");
+  btnRunLi.disabled = true;
+  try {
+    const result = await chrome.runtime.sendMessage({
+      type: "CAPTURE_LINKEDIN_NOW",
+    });
+    if (!result?.ok) {
+      throw new Error(result?.error || "LinkedIn capture failed");
+    }
+    const kept = result.stats?.kept ?? 0;
+    const easy = result.stats?.easyApply ?? 0;
+    const neu = result.ingest?.newCount ?? 0;
+    showMessage(`LinkedIn: kept ${kept} · skipped Easy Apply ${easy} · ${neu} new`);
+    await refresh();
+  } catch (err) {
+    showMessage(err.message || "LinkedIn capture failed", true);
+  } finally {
+    btnRunLi.disabled = false;
   }
 });
 

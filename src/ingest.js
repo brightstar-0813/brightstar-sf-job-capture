@@ -1,5 +1,5 @@
 /**
- * Ingest jobs from Chrome extension (JobRight logged-in session).
+ * Ingest jobs from Chrome extension logged-in sessions (JobRight / LinkedIn).
  */
 
 import { matchesCaptureRule } from "./filter.js";
