@@ -90,24 +90,25 @@ app.post("/api/run", async (_req, res) => {
 });
 
 /**
- * Queue a headless-extension capture (LinkedIn / JobRight).
+ * Queue a headless-extension JobRight capture.
  * The extension polls GET /api/extension/poll about once a minute, or run
  * immediately by clicking the toolbar icon after queuing.
- * Body: { sources?: ("linkedin"|"jobright")[] } — default LinkedIn only.
+ * Body: { sources?: ("jobright")[] } — LinkedIn is not captured.
  */
 app.post("/api/extension/capture", (req, res) => {
-  const raw = Array.isArray(req.body?.sources) ? req.body.sources : ["linkedin"];
+  const raw = Array.isArray(req.body?.sources) ? req.body.sources : ["jobright"];
   const sources = [
     ...new Set(
       raw
         .map((s) => String(s || "").toLowerCase())
-        .filter((s) => s === "linkedin" || s === "jobright")
+        .filter((s) => s === "jobright")
     ),
   ];
   if (!sources.length) {
-    res
-      .status(400)
-      .json({ ok: false, error: "sources must include linkedin and/or jobright" });
+    res.status(400).json({
+      ok: false,
+      error: "sources must include jobright (LinkedIn capture is disabled)",
+    });
     return;
   }
   setMeta(
@@ -132,20 +133,23 @@ app.get("/api/extension/poll", (_req, res) => {
   setMeta("extension_capture_request", "");
   try {
     const parsed = JSON.parse(String(raw));
+    const sources = (parsed.sources || ["jobright"]).filter(
+      (s) => s === "jobright"
+    );
     res.json({
       ok: true,
       run: true,
-      sources: parsed.sources || ["linkedin"],
+      sources: sources.length ? sources : ["jobright"],
       at: parsed.at || null,
     });
   } catch {
-    res.json({ ok: true, run: true, sources: ["linkedin"] });
+    res.json({ ok: true, run: true, sources: ["jobright"] });
   }
 });
 
 /**
  * Extension ingest — jobs scraped from a logged-in Chrome session.
- * Body: { source?: 'jobright'|'linkedin', jobs: [...] }
+ * Body: { source?: 'jobright', jobs: [...] } — LinkedIn source is rejected.
  */
 app.post("/api/ingest", async (req, res) => {
   try {

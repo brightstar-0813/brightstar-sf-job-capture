@@ -338,7 +338,6 @@ export function pagesForSearchQuery(index) {
 
 /** Known capture source ids (used for status counts). */
 export const SOURCE_IDS = [
-  "linkedin",
   "dice",
   "jobright",
   "builtin",
@@ -362,11 +361,10 @@ export const SOURCE_IDS = [
 /**
  * Preferred posting when the same role appears on several boards
  * (Salesforce priority: company careers → Indeed → Dice → Zip → …).
- * LinkedIn URLs win even if source is another board.
+ * LinkedIn URLs win even if source is another board (LinkedIn is not scraped).
  * Lower index = higher priority.
  */
 export const SOURCE_PRIORITY = [
-  "linkedin",
   "greenhouse",
   "lever",
   "ashby",

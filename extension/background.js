@@ -1,6 +1,6 @@
 /**
- * Background: schedule JobRight and LinkedIn scrapes daily at 5:00 AM and
- * 5:00 PM (local time) using the user's logged-in Chrome session.
+ * Background: schedule JobRight scrape daily at 5:00 AM and 5:00 PM (local time)
+ * using the user's logged-in Chrome session. LinkedIn is not scraped.
  */
 
 const API = "http://127.0.0.1:3847";
@@ -45,17 +45,6 @@ function buildSearchUrl(query = "Salesforce Administrator") {
     `https://jobright.ai/jobs/search?visit=search&value=${value}` +
     `&searchType=job_title&country=US&jobTaxonomyList=${taxonomy}`
   );
-}
-
-function buildLinkedinSearchUrl(query = "Salesforce") {
-  const params = new URLSearchParams({
-    keywords: query,
-    location: "United States",
-    f_WT: "2",
-    f_TPR: "r259200",
-    sortBy: "DD",
-  });
-  return `https://www.linkedin.com/jobs/search/?${params.toString()}`;
 }
 
 async function apiPost(path, body) {
@@ -134,17 +123,6 @@ async function ensureContentScript(tabId) {
   }
 }
 
-async function ensureLinkedinContentScript(tabId) {
-  try {
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      files: ["linkedin-content.js"],
-    });
-  } catch {
-    /* already injected or page not ready */
-  }
-}
-
 async function scrapeTab(tabId, titles) {
   let lastErr = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -181,32 +159,6 @@ async function scrapeTab(tabId, titles) {
   throw new Error(
     lastErr?.message ||
       "Could not reach JobRight content script (reload the extension and stay signed in on jobright.ai)"
-  );
-}
-
-async function scrapeLinkedinTab(tabId) {
-  let lastErr = null;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await ensureLinkedinContentScript(tabId);
-    await sleep(1000 + attempt * 500);
-    try {
-      const stored = await chrome.storage.local.get(["linkedinQuery"]);
-      const keywords =
-        String(stored.linkedinQuery || "Salesforce").trim() || "Salesforce";
-      const result = await chrome.tabs.sendMessage(tabId, {
-        type: "SCRAPE_LINKEDIN_V2",
-        options: { maxJobs: 60, maxScrolls: 12, keywords },
-      });
-      if (result?.ok) return result;
-      lastErr = new Error(result?.error || "LinkedIn scrape failed");
-      if (/not signed in/i.test(lastErr.message)) break;
-    } catch (err) {
-      lastErr = err;
-    }
-  }
-  throw new Error(
-    lastErr?.message ||
-      "Could not reach LinkedIn content script (reload the extension and stay signed in on linkedin.com)"
   );
 }
 
@@ -255,47 +207,6 @@ async function captureJobrightFromChrome() {
   }
 }
 
-/**
- * Open a remote-US LinkedIn Jobs search, scrape external-Apply listings, ingest,
- * and close the temporary tab. This never clicks an Apply button.
- */
-async function captureLinkedinFromChrome() {
-  const stored = await chrome.storage.local.get(["linkedinQuery"]);
-  const query = String(stored.linkedinQuery || "Salesforce").trim() || "Salesforce";
-  const tab = await chrome.tabs.create({
-    url: buildLinkedinSearchUrl(query),
-    active: false,
-  });
-  const tabId = tab.id;
-
-  try {
-    await waitForTabComplete(tabId, 45000);
-    await sleep(5000);
-    const result = await scrapeLinkedinTab(tabId);
-    const ingest = await apiPost("/api/ingest", {
-      source: "linkedin",
-      trusted: true,
-      jobs: result.jobs || [],
-    });
-
-    await chrome.storage.local.set({
-      lastLinkedinCapture: {
-        at: new Date().toISOString(),
-        stats: result.stats,
-        ingest,
-      },
-      lastLinkedinError: null,
-    });
-    return { ok: true, stats: result.stats, ingest };
-  } finally {
-    try {
-      if (tabId != null) await chrome.tabs.remove(tabId);
-    } catch {
-      /* ignore */
-    }
-  }
-}
-
 async function runWithStoredError(capture, errorKey, label) {
   try {
     return await capture();
@@ -311,30 +222,19 @@ async function runWithStoredError(capture, errorKey, label) {
   }
 }
 
-async function captureScheduledSources(sources = ["jobright", "linkedin"]) {
+async function captureScheduledSources(sources = ["jobright"]) {
   const want = new Set(
-    (Array.isArray(sources) ? sources : ["jobright", "linkedin"]).map((s) =>
-      String(s).toLowerCase()
-    )
+    (Array.isArray(sources) ? sources : ["jobright"])
+      .map((s) => String(s).toLowerCase())
+      .filter((s) => s === "jobright")
   );
   const results = {};
-  if (want.has("jobright")) {
+  if (want.has("jobright") || want.size === 0) {
     try {
       results.jobright = await runWithStoredError(
         captureJobrightFromChrome,
         "lastJobrightError",
         "jobright alarm"
-      );
-    } catch {
-      /* continue so one source cannot prevent the other */
-    }
-  }
-  if (want.has("linkedin")) {
-    try {
-      results.linkedin = await runWithStoredError(
-        captureLinkedinFromChrome,
-        "lastLinkedinError",
-        "linkedin alarm"
       );
     } catch {
       /* per-source error already stored */
@@ -402,12 +302,10 @@ async function runCaptureNow(label, sources) {
   await setActionState(`${label} — capturing…`, "…", "#5c5c5c");
   const results = await captureScheduledSources(sources);
   const jrOk = !!results.jobright?.ok;
-  const liOk = !!results.linkedin?.ok;
   const jrKept = results.jobright?.stats?.kept ?? 0;
-  const liKept = results.linkedin?.stats?.kept ?? 0;
-  const ok = jrOk || liOk;
+  const ok = jrOk;
   const title = ok
-    ? `Last capture OK — JobRight kept ${jrKept}, LinkedIn kept ${liKept}`
+    ? `Last capture OK — JobRight kept ${jrKept}`
     : "Last capture failed — check chrome://extensions service worker logs; keep npm start running";
   await setActionState(title, ok ? "OK" : "!", ok ? "#0b6e4f" : "#b42318");
   return results;
@@ -422,7 +320,7 @@ async function pollQueuedCapture() {
   }
   const data = await res.json().catch(() => ({}));
   if (!data?.run) return;
-  const sources = Array.isArray(data.sources) ? data.sources : ["linkedin"];
+  const sources = Array.isArray(data.sources) ? data.sources : ["jobright"];
   await runCaptureNow("API-queued capture", sources);
 }
 
@@ -432,7 +330,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     return;
   }
   if (alarm.name !== ALARM) return;
-  runCaptureNow("Scheduled capture")
+  runCaptureNow("Scheduled capture", ["jobright"])
     .catch((err) => console.error("[scheduled capture]", err))
     .finally(() => {
       scheduleNextAlarm();
@@ -441,19 +339,20 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 /**
  * No popup — toolbar click runs a queued capture if one is waiting,
- * otherwise JobRight + LinkedIn.
+ * otherwise JobRight only.
  */
 chrome.action.onClicked.addListener(() => {
   (async () => {
-    let sources = ["jobright", "linkedin"];
+    let sources = ["jobright"];
     try {
       const res = await fetch(`${API}/api/extension/poll`);
       const data = await res.json().catch(() => ({}));
       if (data?.run && Array.isArray(data.sources) && data.sources.length) {
-        sources = data.sources;
+        sources = data.sources.filter((s) => s === "jobright");
+        if (!sources.length) sources = ["jobright"];
       }
     } catch {
-      /* API offline — still try both */
+      /* API offline — still try JobRight */
     }
     await runCaptureNow("Manual capture", sources);
   })().catch((err) => {

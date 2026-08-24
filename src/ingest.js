@@ -1,5 +1,6 @@
 /**
- * Ingest jobs from Chrome extension logged-in sessions (JobRight / LinkedIn).
+ * Ingest jobs from Chrome extension logged-in sessions (JobRight).
+ * LinkedIn is not a capture source.
  */
 
 import { matchesCaptureRule } from "./filter.js";
@@ -25,6 +26,21 @@ export async function ingestJobsPayload(jobs, opts = {}) {
   const counts = { newCount: 0, updatedCount: 0, skippedCount: 0 };
   const newJobs = [];
 
+  if (source === "linkedin") {
+    finishRun(runId, counts);
+    return {
+      ok: true,
+      runId,
+      source,
+      ...counts,
+      received: list.length,
+      skippedCount: list.length,
+      files: syncCsv(),
+      lastCsv: getMeta("last_csv_path"),
+      note: "LinkedIn capture is disabled — jobs were not ingested",
+    };
+  }
+
   for (const raw of list) {
     const job = {
       ...raw,
@@ -32,6 +48,10 @@ export async function ingestJobsPayload(jobs, opts = {}) {
       id: raw.id || (raw.jobId ? `${source}_${raw.jobId}` : null),
     };
     if (!job.id) {
+      counts.skippedCount += 1;
+      continue;
+    }
+    if (String(job.source || "").toLowerCase() === "linkedin") {
       counts.skippedCount += 1;
       continue;
     }

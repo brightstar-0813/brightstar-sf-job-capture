@@ -1,15 +1,15 @@
 # Salesforce Job Capture (multi-source)
 
-Capture **remote Salesforce-ecosystem** jobs from LinkedIn (logged-in Chrome extension), Dice, JobRight, Built In, company career boards (Greenhouse / Lever / Ashby), Remotive, Jobicy, Remote OK, We Work Remotely, Himalayas, Jobgether, Arbeitnow, ZipRecruiter, Monster, Indeed, CareerBuilder, and optional Google Jobs **twice daily (5:00 AM and 5:00 PM local time)**, append/dedupe locally, update one combined CSV, and Slack-notify on new jobs.
+Capture **remote Salesforce-ecosystem** jobs from Dice, JobRight, Built In, company career boards (Greenhouse / Lever / Ashby), Remotive, Jobicy, Remote OK, We Work Remotely, Himalayas, Jobgether, Arbeitnow, ZipRecruiter, Monster, Indeed, CareerBuilder, and optional Google Jobs **twice daily (5:00 AM and 5:00 PM local time)**, append/dedupe locally, update one combined CSV, and Slack-notify on new jobs.
 
 ## What gets saved
 
 Each run overwrites **one** combined CSV with the latest qualifying jobs from all sources:
 
-- `download/jobs_latest.csv` — all sources together (`source` column marks LinkedIn / Dice / JobRight / Built In / …). Rows posted in the last **24 hours** are sorted to the top (newest first); then by preferred source.
+- `download/jobs_latest.csv` — all sources together (`source` column marks Dice / JobRight / Built In / …). Rows posted in the last **24 hours** are sorted to the top (newest first); then by preferred source.
 - `download/store.json` — shared dedupe history
 
-**Source priority (same title+company):** LinkedIn URL → Greenhouse/Lever/Ashby → Indeed → Dice → ZipRecruiter → Glassdoor → Built In → other aggregators → JobRight. LinkedIn is captured directly through the extension, and LinkedIn links exposed by another board still win dedupe. **Any job whose URL is LinkedIn is kept only if posted within the last 3 days** (even when the row’s `source` is JobRight or another board).
+**Source priority (same title+company):** LinkedIn URL → Greenhouse/Lever/Ashby → Indeed → Dice → ZipRecruiter → Glassdoor → Built In → other aggregators → JobRight. **LinkedIn is not scraped** as a board; when JobRight (or another board) exposes a LinkedIn apply link, that URL is kept and wins dedupe. **Any job whose URL is LinkedIn is kept only if posted within the last 3 days**.
 
 Filter (applied to all sources):
 
@@ -22,9 +22,8 @@ Filter (applied to all sources):
 
 | Source | How it runs | Notes |
 |--------|-------------|-------|
-| **LinkedIn** | Logged-in Chrome extension | Prefers LinkedIn’s Voyager jobs API (DOM fallback). US + Remote, **posted within 3 days**. External **Apply** only; skips **Easy Apply**; never applies. |
 | **Dice** | Windows Task Scheduler | Optional login for applied-job exclusion. Searches `SEARCH_QUERIES` (Salesforce, Health Cloud, Data Cloud, …) |
-| **JobRight** | Scheduler + saved Playwright login (or Chrome extension) | Needs `npm run jobright:login` |
+| **JobRight** | Scheduler + saved Playwright login (or Chrome extension) | Needs `npm run jobright:login` (or use the logged-in extension) |
 | **Built In** | Scheduler (Playwright) | Remote + keyword search; skips listings whose titles aren't Salesforce-related |
 | **Greenhouse / Lever / Ashby** | Scheduler (public company-board APIs) | Direct from employer career sites — Salesforce ISVs, partners, and companies that hire SF admins/devs (`GREENHOUSE_BOARDS`, `LEVER_BOARDS`, `ASHBY_BOARDS`) |
 | **Remotive / Jobicy / Remote OK / We Work Remotely** | Scheduler (public JSON/RSS) | No browser; not Cloudflare-gated — extra recent remote listings |
@@ -52,19 +51,19 @@ npm run indeed:login
 
 A Chrome window opens. Pass the verification (sign in if asked) until Salesforce job cards are visible, then press Enter. Capture reuses `download/indeed-profile`. Re-run login when the log says Cloudflare challenge.
 
-### Logged-in Chrome extension (LinkedIn and JobRight)
+### Logged-in Chrome extension (JobRight)
 
-The extension opens temporary background tabs using **your existing Chrome cookies** and posts qualifying jobs to the local API. **JobRight** and **LinkedIn** both prefer the site’s own authenticated APIs (JobRight `/swan/…`, LinkedIn Voyager) — the same pattern, not CSS scraping. LinkedIn falls back to DOM only if Voyager fails. LinkedIn searches United States + Remote, rejects **Easy Apply**, keeps external **Apply** only, and never clicks Apply.
+The extension opens temporary background tabs using **your existing Chrome cookies** and posts qualifying JobRight jobs to the local API (JobRight `/swan/…`). **LinkedIn jobs are not fetched.** LinkedIn apply links that appear on JobRight listings are still preferred in dedupe when posted within 3 days.
 
 **Requirements for extension auto-capture:**
 
-1. Stay signed in to [linkedin.com](https://www.linkedin.com) and [jobright.ai](https://jobright.ai) in Chrome
+1. Stay signed in to [jobright.ai](https://jobright.ai) in Chrome
 2. API auto-starts at Windows logon (`npm run schedule:api`) — no manual `npm start`
 3. Open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select this repo’s `extension/` folder
 4. After code updates, click **Reload** on the extension
-5. Optional: click the toolbar icon once to run JobRight + LinkedIn now (badge shows `OK` / `!`). There is no popup UI — capture is scheduled at 5 AM and 5 PM while Chrome is open.
+5. Optional: click the toolbar icon once to run JobRight now (badge shows `OK` / `!`). There is no popup UI — capture is scheduled at 5 AM and 5 PM while Chrome is open.
 
-Export CSV from `download/jobs_latest.csv` or `http://127.0.0.1:3847/api/export.csv`. Full multi-board capture still runs from Task Scheduler / `npm run capture`. LinkedIn Voyager endpoints are undocumented and can change; if capture fails, check the extension service worker logs, re-sign in, then update `extension/linkedin-content.js` if needed.
+Export CSV from `download/jobs_latest.csv` or `http://127.0.0.1:3847/api/export.csv`. Full multi-board capture still runs from Task Scheduler / `npm run capture`.
 
 ## Fully automatic — daily at 5 AM and 5 PM (Windows)
 
@@ -79,7 +78,7 @@ npm run schedule:install
 | `DiceJobCapture_5am5pm` | Runs capture daily at **5:00 AM** and **5:00 PM** (local time) |
 | `DiceJobCapture_API_AtLogon` | Starts `node src/server.js` when you log in (so extension sources can ingest) |
 
-You do **not** need to open Cursor or type `npm start` after that — just reboot/login once, stay signed in to LinkedIn and JobRight in Chrome, and keep the extension loaded.
+You do **not** need to open Cursor or type `npm start` after that — just reboot/login once, stay signed in to JobRight in Chrome, and keep the extension loaded.
 
 Optional checks:
 
@@ -110,7 +109,7 @@ Then load `extension/` unpacked in Chrome.
 | `GET /api/status` | Last run, CSV paths |
 | `GET /api/jobs?status=new` | New jobs |
 | `POST /api/run` | Trigger Dice capture (Node) |
-| `POST /api/ingest` | Extension posts LinkedIn or JobRight jobs |
+| `POST /api/ingest` | Extension posts JobRight jobs |
 | `GET /api/export.csv` | Download the combined CSV |
 
 ## Env highlights
@@ -136,4 +135,4 @@ Then load `extension/` unpacked in Chrome.
 
 - Personal job-hunting use; polite delays / page caps.
 - After JobRight UI changes, re-run `npm run jobright:login` if autofill jobs stop appearing.
-- LinkedIn capture prefers Voyager (`extension/linkedin-content.js`) and falls back to DOM. Undocumented endpoints change; keep polite delays.
+- LinkedIn is not scraped; LinkedIn apply links from other boards still win dedupe if posted within 3 days.
