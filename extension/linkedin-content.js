@@ -4,7 +4,7 @@
  * External Apply only; never clicks Apply.
  */
 (function () {
-  const CS_VERSION = 2;
+  const CS_VERSION = 3;
   if (window.__SF_LINKEDIN_CS_VERSION__ === CS_VERSION) return;
   if (typeof window.__SF_LINKEDIN_CS_LISTENER__ === "function") {
     try {
@@ -15,6 +15,9 @@
   }
   window.__SF_LINKEDIN_CS_VERSION__ = CS_VERSION;
 
+  /** Keep only jobs posted within this many days (API + DOM). */
+  const RECENT_DAYS = 3;
+  const RECENT_SECONDS = RECENT_DAYS * 24 * 60 * 60;
   const US_GEO_ID = "103644278";
   const PAGE_SIZE = 25;
   const CARD_DECORATION =
@@ -35,6 +38,53 @@
 
   function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function parsePostedDate(value, now) {
+    now = now || new Date();
+    if (value == null || value === "") return null;
+    if (typeof value === "number" || /^\d+$/.test(String(value).trim())) {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n <= 0) return null;
+      const ms = String(Math.trunc(n)).length <= 10 ? n * 1000 : n;
+      const d = new Date(ms);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    const s = String(value).trim().toLowerCase();
+    if (/(^|\b)(just posted|today|moments? ago|minutes? ago|hours? ago|<\s*1\s*day)/.test(s)) {
+      return now;
+    }
+    if (/\byesterday\b/.test(s)) return new Date(now.getTime() - 864e5);
+    const rel = s.match(/(\d+)\+?\s*(hour|day|week|month|year)s?\s*ago/);
+    if (rel) {
+      const unit = {
+        hour: 36e5,
+        day: 864e5,
+        week: 6048e5,
+        month: 2592e6,
+        year: 31536e6,
+      }[rel[2]];
+      return new Date(now.getTime() - Number(rel[1]) * unit);
+    }
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? null : new Date(parsed);
+  }
+
+  function isWithinRecentDays(value, days, now) {
+    now = now || new Date();
+    const d = parsePostedDate(value, now);
+    if (!d) return null;
+    const age = now.getTime() - d.getTime();
+    if (age < 0) return true;
+    return age <= days * 864e5;
+  }
+
+  function rejectIfTooOld(mapped) {
+    if (!mapped?.job) return mapped;
+    if (isWithinRecentDays(mapped.job.date_posted, RECENT_DAYS) === false) {
+      return { reason: "tooOld" };
+    }
+    return mapped;
   }
 
   function isLoginWall() {
@@ -82,7 +132,7 @@
       `(origin:JOB_SEARCH_PAGE_JOB_FILTER,` +
       `keywords:${kw},` +
       `locationUnion:(geoId:${US_GEO_ID}),` +
-      `selectedFilters:(timePostedRange:List(r604800),workplaceType:List(2)),` +
+      `selectedFilters:(timePostedRange:List(r${RECENT_SECONDS}),workplaceType:List(2)),` +
       `spellCorrectionEnabled:true)`;
     return (
       `/voyager/api/voyagerJobsDashJobCards` +
@@ -189,7 +239,7 @@
     if (!title || !organization) return { reason: "malformed" };
     if (isEasyApplyCard(card, posting)) return { reason: "easyApply" };
 
-    return {
+    return rejectIfTooOld({
       job: {
         id: `linkedin_${id}`,
         title: String(title).trim(),
@@ -210,7 +260,7 @@
         description: "",
         _jobId: id,
       },
-    };
+    });
   }
 
   async function enrichDescription(job) {
@@ -252,6 +302,7 @@
       noExternalApply: 0,
       closed: 0,
       malformed: 0,
+      tooOld: 0,
       via: "api",
     };
 
@@ -271,6 +322,10 @@
         const enriched = await enrichDescription(mapped.job);
         if (!enriched) {
           stats.easyApply += 1;
+          continue;
+        }
+        if (isWithinRecentDays(enriched.date_posted, RECENT_DAYS) === false) {
+          stats.tooOld += 1;
           continue;
         }
         jobs.push(enriched);
@@ -385,7 +440,7 @@
     const kind = applyKind(detail);
     if (kind !== "external") return { reason: kind === "easy" ? "easyApply" : "noExternalApply" };
 
-    return {
+    return rejectIfTooOld({
       job: {
         id: `linkedin_${id}`,
         title,
@@ -405,7 +460,7 @@
         url: `https://www.linkedin.com/jobs/view/${id}/`,
         description,
       },
-    };
+    });
   }
 
   async function scrapeViaDom(options = {}) {
@@ -420,6 +475,7 @@
       noExternalApply: 0,
       closed: 0,
       malformed: 0,
+      tooOld: 0,
       via: "dom",
     };
     const scroller =

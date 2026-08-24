@@ -9,7 +9,7 @@ Each run overwrites **one** combined CSV with the latest qualifying jobs from al
 - `download/jobs_latest.csv` — all sources together (`source` column marks LinkedIn / Dice / JobRight / Built In / …). Rows posted in the last **24 hours** are sorted to the top (newest first); then by preferred source.
 - `download/store.json` — shared dedupe history
 
-**Source priority (same title+company):** LinkedIn URL → Greenhouse/Lever/Ashby → Indeed → Dice → ZipRecruiter → Glassdoor → Built In → other aggregators → JobRight. LinkedIn is captured directly through the extension, and LinkedIn links exposed by another board still win dedupe.
+**Source priority (same title+company):** LinkedIn URL → Greenhouse/Lever/Ashby → Indeed → Dice → ZipRecruiter → Glassdoor → Built In → other aggregators → JobRight. LinkedIn is captured directly through the extension, and LinkedIn links exposed by another board still win dedupe. **Any job whose URL is LinkedIn is kept only if posted within the last 3 days** (even when the row’s `source` is JobRight or another board).
 
 Filter (applied to all sources):
 
@@ -22,7 +22,7 @@ Filter (applied to all sources):
 
 | Source | How it runs | Notes |
 |--------|-------------|-------|
-| **LinkedIn** | Logged-in Chrome extension | Prefers LinkedIn’s Voyager jobs API (DOM fallback). US + Remote. External **Apply** only; skips **Easy Apply**; never applies. |
+| **LinkedIn** | Logged-in Chrome extension | Prefers LinkedIn’s Voyager jobs API (DOM fallback). US + Remote, **posted within 3 days**. External **Apply** only; skips **Easy Apply**; never applies. |
 | **Dice** | Windows Task Scheduler | Optional login for applied-job exclusion. Searches `SEARCH_QUERIES` (Salesforce, Health Cloud, Data Cloud, …) |
 | **JobRight** | Scheduler + saved Playwright login (or Chrome extension) | Needs `npm run jobright:login` |
 | **Built In** | Scheduler (Playwright) | Remote + keyword search; skips listings whose titles aren't Salesforce-related |

@@ -238,6 +238,10 @@ export function captureRuleReason(job) {
   if (!containsSalesforce(job.title, job.description)) {
     return "low Salesforce relevance";
   }
+  // LinkedIn apply/view links from any source (JobRight, etc.): max 3 days.
+  if (isLinkedinLink(job.url) && !isRecentJob(job, LINKEDIN_URL_RECENT_DAYS)) {
+    return `LinkedIn link older than ${LINKEDIN_URL_RECENT_DAYS} days`;
+  }
   return null;
 }
 
@@ -256,6 +260,21 @@ export function filterSalesforceJobs(jobs) {
 
 export function isLinkedinLink(...links) {
   return links.some((l) => /linkedin\.com/i.test(String(l || "")));
+}
+
+/** Hard cap for any job whose apply/view URL is LinkedIn (any board). */
+export const LINKEDIN_URL_RECENT_DAYS = 3;
+
+/**
+ * Why a LinkedIn-URL job fails the 3-day rule, or null if N/A / OK.
+ * Covers JobRight (and other sources) when they surface a linkedin.com link.
+ */
+export function linkedinUrlRecencyReason(job, now = new Date()) {
+  if (!job || !isLinkedinLink(job.url)) return null;
+  if (!isRecentJob(job, LINKEDIN_URL_RECENT_DAYS, now)) {
+    return `LinkedIn link older than ${LINKEDIN_URL_RECENT_DAYS} days`;
+  }
+  return null;
 }
 
 /**

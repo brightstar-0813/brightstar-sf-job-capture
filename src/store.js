@@ -5,6 +5,8 @@ import { writeCsv } from "./csv.js";
 import {
   matchesCaptureRule,
   isRecentJob,
+  isLinkedinLink,
+  LINKEDIN_URL_RECENT_DAYS,
   parsePostedDate,
 } from "./filter.js";
 
@@ -16,9 +18,13 @@ const ATS_SOURCES = new Set(["greenhouse", "lever", "ashby"]);
  * (remote Salesforce-ecosystem role, non-Salesforce employer) AND was posted
  * within the configured recency window. Greenhouse/Lever/Ashby jobs instead
  * stay while we still see them on the live board (last_seen_at).
+ * LinkedIn URLs (any source) are always capped at LINKEDIN_URL_RECENT_DAYS.
  */
 function matchesOutputRule(job) {
   if (!matchesCaptureRule(job)) return false;
+  if (isLinkedinLink(job.url)) {
+    return isRecentJob(job, LINKEDIN_URL_RECENT_DAYS);
+  }
   const src = String(job.source || "").toLowerCase();
   if (ATS_SOURCES.has(src)) {
     return isRecentJob(

@@ -52,7 +52,7 @@ function buildLinkedinSearchUrl(query = "Salesforce") {
     keywords: query,
     location: "United States",
     f_WT: "2",
-    f_TPR: "r604800",
+    f_TPR: "r259200",
     sortBy: "DD",
   });
   return `https://www.linkedin.com/jobs/search/?${params.toString()}`;

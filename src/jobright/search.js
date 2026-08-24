@@ -14,6 +14,8 @@ import {
   isRemoteArrangement,
   parsePostedDate,
   isWithinRecentDays,
+  isLinkedinLink,
+  LINKEDIN_URL_RECENT_DAYS,
 } from "../filter.js";
 
 function sleep(ms) {
@@ -325,7 +327,14 @@ export async function searchJobrightJobs(browser) {
           nonSalesforceSkipped += 1;
           continue;
         }
-        if (isWithinRecentDays(mapped.date_posted, config.recentDays) === false) {
+        if (
+          isWithinRecentDays(
+            mapped.date_posted,
+            isLinkedinLink(mapped.url)
+              ? LINKEDIN_URL_RECENT_DAYS
+              : config.recentDays
+          ) === false
+        ) {
           staleSkipped += 1;
           continue;
         }

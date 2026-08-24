@@ -11,7 +11,7 @@
 (function () {
   // Bump when scrape/API body changes so executeScript can replace a stale
   // injection (old code used workModel: ["Remote"] → HTTP 400).
-  const CS_VERSION = 4;
+  const CS_VERSION = 5;
   if (window.__SF_JOBRIGHT_CS_VERSION__ === CS_VERSION) return;
   if (typeof window.__SF_JOBRIGHT_CS_LISTENER__ === "function") {
     try {
@@ -72,6 +72,8 @@ function isRemoteArrangement(workArrangement) {
 
 // Only keep jobs posted within this many days (mirror of RECENT_DAYS).
 const RECENT_DAYS = 7;
+/** LinkedIn apply/view links (any JobRight result) — hard 3-day cap. */
+const LINKEDIN_URL_RECENT_DAYS = 3;
 
 function parsePostedDate(value, now) {
   now = now || new Date();
@@ -335,7 +337,10 @@ async function scrapeJobrightJobs(titles) {
       }
       if (!isRemoteArrangement(mapped.work_arrangement)) continue;
       if (!isSalesforceJob(mapped)) continue;
-      if (isWithinRecentDays(mapped.date_posted, RECENT_DAYS) === false) {
+      const recentLimit = /linkedin\.com/i.test(mapped.url || "")
+        ? LINKEDIN_URL_RECENT_DAYS
+        : RECENT_DAYS;
+      if (isWithinRecentDays(mapped.date_posted, recentLimit) === false) {
         skippedStale += 1;
         continue;
       }
