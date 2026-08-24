@@ -7,7 +7,6 @@ import {
   isWithinRecentDays,
   parsePostedDate,
   isLinkedinLink,
-  LINKEDIN_URL_RECENT_DAYS,
 } from "../filter.js";
 
 export function emptySkipCounts() {
@@ -39,10 +38,14 @@ export function keepFeedJob(job, counts, { skipRecency = false } = {}) {
     counts.nonSf += 1;
     return false;
   }
-  const days = isLinkedinLink(job.url)
-    ? LINKEDIN_URL_RECENT_DAYS
-    : config.recentDays;
-  if (!skipRecency && isWithinRecentDays(job.date_posted, days) === false) {
+  if (isLinkedinLink(job.url)) {
+    counts.stale += 1;
+    return false;
+  }
+  if (
+    !skipRecency &&
+    isWithinRecentDays(job.date_posted, config.recentDays) === false
+  ) {
     counts.stale += 1;
     return false;
   }

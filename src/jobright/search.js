@@ -1,6 +1,6 @@
 /**
  * JobRight.ai Salesforce search — remote US roles via recommend/search API.
- * LinkedIn / company-site apply URLs are kept (preferred in store dedupe).
+ * Company-site / ATS apply URLs are preferred; LinkedIn apply links are never kept.
  *
  * Jobs load via POST /swan/recommend/search (not __NEXT_DATA__.jobList).
  */
@@ -14,8 +14,6 @@ import {
   isRemoteArrangement,
   parsePostedDate,
   isWithinRecentDays,
-  isLinkedinLink,
-  LINKEDIN_URL_RECENT_DAYS,
 } from "../filter.js";
 
 function sleep(ms) {
@@ -73,11 +71,11 @@ function mapApiJob(item) {
     jr.url ||
     `https://jobright.ai/jobs/info/${jr.jobId}`
   ).split("?")[0];
-  // Prefer LinkedIn / company-site apply links (source priority) over JobRight page.
+  // Prefer company-site / ATS apply links over JobRight page. Never use LinkedIn.
   const preferApply =
     applyLink &&
-    (/linkedin\.com/i.test(applyLink) ||
-      jr.isCompanySiteLink === true ||
+    !/linkedin\.com/i.test(applyLink) &&
+    (jr.isCompanySiteLink === true ||
       /greenhouse\.io|jobs\.lever\.co|ashbyhq\.com|indeed\.com|dice\.com/i.test(
         applyLink
       ));
@@ -327,14 +325,11 @@ export async function searchJobrightJobs(browser) {
           nonSalesforceSkipped += 1;
           continue;
         }
-        if (
-          isWithinRecentDays(
-            mapped.date_posted,
-            isLinkedinLink(mapped.url)
-              ? LINKEDIN_URL_RECENT_DAYS
-              : config.recentDays
-          ) === false
-        ) {
+        if (isWithinRecentDays(mapped.date_posted, config.recentDays) === false) {
+          staleSkipped += 1;
+          continue;
+        }
+        if (/linkedin\.com/i.test(mapped.url || "")) {
           staleSkipped += 1;
           continue;
         }

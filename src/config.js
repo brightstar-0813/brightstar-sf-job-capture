@@ -361,7 +361,7 @@ export const SOURCE_IDS = [
 /**
  * Preferred posting when the same role appears on several boards
  * (Salesforce priority: company careers → Indeed → Dice → Zip → …).
- * LinkedIn URLs win even if source is another board (LinkedIn is not scraped).
+ * LinkedIn URLs are excluded (not scraped; not preferred from other boards).
  * Lower index = higher priority.
  */
 export const SOURCE_PRIORITY = [

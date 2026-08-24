@@ -5,8 +5,6 @@ import { writeCsv } from "./csv.js";
 import {
   matchesCaptureRule,
   isRecentJob,
-  isLinkedinLink,
-  LINKEDIN_URL_RECENT_DAYS,
   parsePostedDate,
 } from "./filter.js";
 
@@ -18,13 +16,10 @@ const ATS_SOURCES = new Set(["greenhouse", "lever", "ashby"]);
  * (remote Salesforce-ecosystem role, non-Salesforce employer) AND was posted
  * within the configured recency window. Greenhouse/Lever/Ashby jobs instead
  * stay while we still see them on the live board (last_seen_at).
- * LinkedIn URLs (any source) are always capped at LINKEDIN_URL_RECENT_DAYS.
+ * LinkedIn URLs are rejected by matchesCaptureRule.
  */
 function matchesOutputRule(job) {
   if (!matchesCaptureRule(job)) return false;
-  if (isLinkedinLink(job.url)) {
-    return isRecentJob(job, LINKEDIN_URL_RECENT_DAYS);
-  }
   const src = String(job.source || "").toLowerCase();
   if (ATS_SOURCES.has(src)) {
     return isRecentJob(
@@ -74,10 +69,6 @@ function sourceFromId(id) {
   return SOURCE_IDS.includes(prefix) ? prefix : "";
 }
 
-function hasLinkedinUrl(job) {
-  return /linkedin\.com/i.test(String(job?.url || ""));
-}
-
 /** Infer board from apply/view URL (e.g. JobRight → Greenhouse link). */
 function sourceHintFromUrl(url) {
   const u = String(url || "").toLowerCase();
@@ -96,11 +87,10 @@ function sourceHintFromUrl(url) {
 }
 
 /**
- * Lower = better. LinkedIn apply/view links beat every board.
- * Then company ATS → Indeed → Dice → Zip → … → JobRight.
+ * Lower = better. Company ATS → Indeed → Dice → Zip → … → JobRight.
+ * LinkedIn URLs are excluded by the capture rule (not ranked).
  */
 export function sourcePriorityRank(job) {
-  if (hasLinkedinUrl(job)) return -1;
   const src = String(
     sourceHintFromUrl(job?.url) ||
       job?.source ||
@@ -115,10 +105,6 @@ function preferJob(a, b) {
   const pa = sourcePriorityRank(a);
   const pb = sourcePriorityRank(b);
   if (pa !== pb) return pa < pb ? a : b;
-
-  const aLi = hasLinkedinUrl(a);
-  const bLi = hasLinkedinUrl(b);
-  if (aLi !== bLi) return aLi ? a : b;
 
   const aDesc = String(a.description || "").length;
   const bDesc = String(b.description || "").length;
