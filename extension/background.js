@@ -190,9 +190,12 @@ async function scrapeLinkedinTab(tabId) {
     await ensureLinkedinContentScript(tabId);
     await sleep(1000 + attempt * 500);
     try {
+      const stored = await chrome.storage.local.get(["linkedinQuery"]);
+      const keywords =
+        String(stored.linkedinQuery || "Salesforce").trim() || "Salesforce";
       const result = await chrome.tabs.sendMessage(tabId, {
-        type: "SCRAPE_LINKEDIN_V1",
-        options: { maxJobs: 60, maxScrolls: 12 },
+        type: "SCRAPE_LINKEDIN_V2",
+        options: { maxJobs: 60, maxScrolls: 12, keywords },
       });
       if (result?.ok) return result;
       lastErr = new Error(result?.error || "LinkedIn scrape failed");
@@ -308,25 +311,34 @@ async function runWithStoredError(capture, errorKey, label) {
   }
 }
 
-async function captureScheduledSources() {
+async function captureScheduledSources(sources = ["jobright", "linkedin"]) {
+  const want = new Set(
+    (Array.isArray(sources) ? sources : ["jobright", "linkedin"]).map((s) =>
+      String(s).toLowerCase()
+    )
+  );
   const results = {};
-  try {
-    results.jobright = await runWithStoredError(
-      captureJobrightFromChrome,
-      "lastJobrightError",
-      "jobright alarm"
-    );
-  } catch {
-    /* continue so one source cannot prevent the other */
+  if (want.has("jobright")) {
+    try {
+      results.jobright = await runWithStoredError(
+        captureJobrightFromChrome,
+        "lastJobrightError",
+        "jobright alarm"
+      );
+    } catch {
+      /* continue so one source cannot prevent the other */
+    }
   }
-  try {
-    results.linkedin = await runWithStoredError(
-      captureLinkedinFromChrome,
-      "lastLinkedinError",
-      "linkedin alarm"
-    );
-  } catch {
-    /* per-source error already stored */
+  if (want.has("linkedin")) {
+    try {
+      results.linkedin = await runWithStoredError(
+        captureLinkedinFromChrome,
+        "lastLinkedinError",
+        "linkedin alarm"
+      );
+    } catch {
+      /* per-source error already stored */
+    }
   }
   return results;
 }
@@ -347,6 +359,8 @@ function nextRunMs(from = new Date()) {
   return fallback.getTime();
 }
 
+const POLL_ALARM = "extension-capture-poll";
+
 async function ensureAlarm() {
   for (const name of LEGACY_ALARMS) {
     await chrome.alarms.clear(name);
@@ -357,6 +371,7 @@ async function ensureAlarm() {
     await chrome.alarms.clear(ALARM);
     chrome.alarms.create(ALARM, { when });
   }
+  chrome.alarms.create(POLL_ALARM, { periodInMinutes: 1 });
 }
 
 function scheduleNextAlarm() {
@@ -371,48 +386,84 @@ chrome.runtime.onStartup.addListener(() => {
   ensureAlarm();
 });
 
+async function setActionState(title, badgeText = "", badgeColor = "#0b6e4f") {
+  try {
+    await chrome.action.setTitle({ title });
+    await chrome.action.setBadgeText({ text: badgeText });
+    if (badgeText) {
+      await chrome.action.setBadgeBackgroundColor({ color: badgeColor });
+    }
+  } catch {
+    /* ignore badge failures in older Chrome */
+  }
+}
+
+async function runCaptureNow(label, sources) {
+  await setActionState(`${label} — capturing…`, "…", "#5c5c5c");
+  const results = await captureScheduledSources(sources);
+  const jrOk = !!results.jobright?.ok;
+  const liOk = !!results.linkedin?.ok;
+  const jrKept = results.jobright?.stats?.kept ?? 0;
+  const liKept = results.linkedin?.stats?.kept ?? 0;
+  const ok = jrOk || liOk;
+  const title = ok
+    ? `Last capture OK — JobRight kept ${jrKept}, LinkedIn kept ${liKept}`
+    : "Last capture failed — check chrome://extensions service worker logs; keep npm start running";
+  await setActionState(title, ok ? "OK" : "!", ok ? "#0b6e4f" : "#b42318");
+  return results;
+}
+
+async function pollQueuedCapture() {
+  let res;
+  try {
+    res = await fetch(`${API}/api/extension/poll`);
+  } catch {
+    return;
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!data?.run) return;
+  const sources = Array.isArray(data.sources) ? data.sources : ["linkedin"];
+  await runCaptureNow("API-queued capture", sources);
+}
+
 chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === POLL_ALARM) {
+    pollQueuedCapture().catch((err) => console.error("[poll capture]", err));
+    return;
+  }
   if (alarm.name !== ALARM) return;
-  captureScheduledSources()
+  runCaptureNow("Scheduled capture")
+    .catch((err) => console.error("[scheduled capture]", err))
     .finally(() => {
       scheduleNextAlarm();
     });
 });
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg?.type === "CAPTURE_JOBRIGHT_NOW") {
-    runWithStoredError(
-      captureJobrightFromChrome,
-      "lastJobrightError",
-      "jobright manual"
-    )
-      .then((r) => sendResponse(r))
-      .catch((err) => sendResponse({ ok: false, error: err.message }));
-    return true;
-  }
-  if (msg?.type === "GET_JOBRIGHT_STATUS") {
-    chrome.storage.local
-      .get(["lastJobrightCapture", "lastJobrightError"])
-      .then((data) => sendResponse({ ok: true, ...data }));
-    return true;
-  }
-  if (msg?.type === "CAPTURE_LINKEDIN_NOW") {
-    runWithStoredError(
-      captureLinkedinFromChrome,
-      "lastLinkedinError",
-      "linkedin manual"
-    )
-      .then((r) => sendResponse(r))
-      .catch((err) => sendResponse({ ok: false, error: err.message }));
-    return true;
-  }
-  if (msg?.type === "GET_LINKEDIN_STATUS") {
-    chrome.storage.local
-      .get(["lastLinkedinCapture", "lastLinkedinError"])
-      .then((data) => sendResponse({ ok: true, ...data }));
-    return true;
-  }
-  return false;
+/**
+ * No popup — toolbar click runs a queued capture if one is waiting,
+ * otherwise JobRight + LinkedIn.
+ */
+chrome.action.onClicked.addListener(() => {
+  (async () => {
+    let sources = ["jobright", "linkedin"];
+    try {
+      const res = await fetch(`${API}/api/extension/poll`);
+      const data = await res.json().catch(() => ({}));
+      if (data?.run && Array.isArray(data.sources) && data.sources.length) {
+        sources = data.sources;
+      }
+    } catch {
+      /* API offline — still try both */
+    }
+    await runCaptureNow("Manual capture", sources);
+  })().catch((err) => {
+    console.error("[manual capture]", err);
+    setActionState(
+      `Capture failed: ${err.message || err}`,
+      "!",
+      "#b42318"
+    );
+  });
 });
 
 ensureAlarm();

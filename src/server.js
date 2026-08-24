@@ -14,6 +14,7 @@ import {
   syncCsv,
   closeStore,
   getMeta,
+  setMeta,
 } from "./store.js";
 
 const app = express();
@@ -86,6 +87,60 @@ app.post("/api/run", async (_req, res) => {
   // Respond immediately; run in background
   res.json({ ok: true, started: true });
   runCapture().catch((err) => console.error("[api/run]", err));
+});
+
+/**
+ * Queue a headless-extension capture (LinkedIn / JobRight).
+ * The extension polls GET /api/extension/poll about once a minute, or run
+ * immediately by clicking the toolbar icon after queuing.
+ * Body: { sources?: ("linkedin"|"jobright")[] } — default LinkedIn only.
+ */
+app.post("/api/extension/capture", (req, res) => {
+  const raw = Array.isArray(req.body?.sources) ? req.body.sources : ["linkedin"];
+  const sources = [
+    ...new Set(
+      raw
+        .map((s) => String(s || "").toLowerCase())
+        .filter((s) => s === "linkedin" || s === "jobright")
+    ),
+  ];
+  if (!sources.length) {
+    res
+      .status(400)
+      .json({ ok: false, error: "sources must include linkedin and/or jobright" });
+    return;
+  }
+  setMeta(
+    "extension_capture_request",
+    JSON.stringify({ at: new Date().toISOString(), sources })
+  );
+  res.json({
+    ok: true,
+    queued: true,
+    sources,
+    hint: "Reload the extension if needed, then click its toolbar icon for an immediate run (or wait ~1 min for the poll).",
+  });
+});
+
+/** Extension consumes a queued capture request (one-shot). */
+app.get("/api/extension/poll", (_req, res) => {
+  const raw = getMeta("extension_capture_request");
+  if (!raw) {
+    res.json({ ok: true, run: false });
+    return;
+  }
+  setMeta("extension_capture_request", "");
+  try {
+    const parsed = JSON.parse(String(raw));
+    res.json({
+      ok: true,
+      run: true,
+      sources: parsed.sources || ["linkedin"],
+      at: parsed.at || null,
+    });
+  } catch {
+    res.json({ ok: true, run: true, sources: ["linkedin"] });
+  }
 });
 
 /**

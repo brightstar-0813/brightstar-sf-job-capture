@@ -22,7 +22,7 @@ Filter (applied to all sources):
 
 | Source | How it runs | Notes |
 |--------|-------------|-------|
-| **LinkedIn** | Logged-in Chrome extension | US + Remote search. Keeps external **Apply** jobs only; skips **Easy Apply** and never submits applications. |
+| **LinkedIn** | Logged-in Chrome extension | Prefers LinkedIn’s Voyager jobs API (DOM fallback). US + Remote. External **Apply** only; skips **Easy Apply**; never applies. |
 | **Dice** | Windows Task Scheduler | Optional login for applied-job exclusion. Searches `SEARCH_QUERIES` (Salesforce, Health Cloud, Data Cloud, …) |
 | **JobRight** | Scheduler + saved Playwright login (or Chrome extension) | Needs `npm run jobright:login` |
 | **Built In** | Scheduler (Playwright) | Remote + keyword search; skips listings whose titles aren't Salesforce-related |
@@ -54,7 +54,7 @@ A Chrome window opens. Pass the verification (sign in if asked) until Salesforce
 
 ### Logged-in Chrome extension (LinkedIn and JobRight)
 
-The extension opens temporary background tabs using **your existing Chrome cookies** and posts qualifying jobs to the local API. LinkedIn capture searches United States + Remote, rejects **Easy Apply**, and keeps only jobs with an external **Apply** action. It records the LinkedIn job URL and never clicks Apply or submits an application. JobRight capture keeps its existing signed-in behavior.
+The extension opens temporary background tabs using **your existing Chrome cookies** and posts qualifying jobs to the local API. **JobRight** and **LinkedIn** both prefer the site’s own authenticated APIs (JobRight `/swan/…`, LinkedIn Voyager) — the same pattern, not CSS scraping. LinkedIn falls back to DOM only if Voyager fails. LinkedIn searches United States + Remote, rejects **Easy Apply**, keeps external **Apply** only, and never clicks Apply.
 
 **Requirements for extension auto-capture:**
 
@@ -62,9 +62,9 @@ The extension opens temporary background tabs using **your existing Chrome cooki
 2. API auto-starts at Windows logon (`npm run schedule:api`) — no manual `npm start`
 3. Open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select this repo’s `extension/` folder
 4. After code updates, click **Reload** on the extension
-5. Click **Capture LinkedIn** and **Capture JobRight** once to verify. The popup reports per-source status and errors.
+5. Optional: click the toolbar icon once to run JobRight + LinkedIn now (badge shows `OK` / `!`). There is no popup UI — capture is scheduled at 5 AM and 5 PM while Chrome is open.
 
-Both extension sources run at 5 AM and 5 PM while Chrome is open. LinkedIn’s page structure changes periodically; if capture reports that cards or Apply controls cannot be found, reload the extension first, then update its selectors if needed.
+Export CSV from `download/jobs_latest.csv` or `http://127.0.0.1:3847/api/export.csv`. Full multi-board capture still runs from Task Scheduler / `npm run capture`. LinkedIn Voyager endpoints are undocumented and can change; if capture fails, check the extension service worker logs, re-sign in, then update `extension/linkedin-content.js` if needed.
 
 ## Fully automatic — daily at 5 AM and 5 PM (Windows)
 
@@ -136,4 +136,4 @@ Then load `extension/` unpacked in Chrome.
 
 - Personal job-hunting use; polite delays / page caps.
 - After JobRight UI changes, re-run `npm run jobright:login` if autofill jobs stop appearing.
-- LinkedIn capture depends on its rendered jobs UI. If LinkedIn changes that UI, selectors in `extension/linkedin-content.js` may need maintenance.
+- LinkedIn capture prefers Voyager (`extension/linkedin-content.js`) and falls back to DOM. Undocumented endpoints change; keep polite delays.
