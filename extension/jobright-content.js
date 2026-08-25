@@ -11,7 +11,7 @@
 (function () {
   // Bump when scrape/API body changes so executeScript can replace a stale
   // injection (old code used workModel: ["Remote"] → HTTP 400).
-  const CS_VERSION = 6;
+  const CS_VERSION = 7;
   if (window.__SF_JOBRIGHT_CS_VERSION__ === CS_VERSION) return;
   if (typeof window.__SF_JOBRIGHT_CS_LISTENER__ === "function") {
     try {
@@ -134,6 +134,9 @@ function mapItem(item, applyLabel) {
   if (!jr.jobId) return null;
   const salary = parseSalary(jr.salaryDesc);
   const applyLink = String(jr.applyLink || jr.originalUrl || "").trim();
+  const originalUrl = String(jr.originalUrl || "").trim();
+  const redirectsToLinkedin =
+    /linkedin\.com/i.test(applyLink) || /linkedin\.com/i.test(originalUrl);
   const fallbackUrl = (`https://jobright.ai/jobs/info/${jr.jobId}`).split("?")[0];
   const preferApply =
     applyLink &&
@@ -172,6 +175,7 @@ function mapItem(item, applyLabel) {
     jobtargetEasyapply: jr.jobtargetEasyapply === true,
     _applyLink: applyLink,
     _isCompanySite: jr.isCompanySiteLink === true,
+    _linkedinApply: redirectsToLinkedin,
     _expired: jr.isDeleted === true || jr.hiddenJob === true,
   };
 }
@@ -298,6 +302,7 @@ async function scrapeJobrightJobs(titles) {
   let skippedApplied = 0;
   let skippedStale = 0;
   let skippedExpired = 0;
+  let skippedLinkedin = 0;
   let appliedTotal = 0;
   let okQueries = 0;
 
@@ -329,6 +334,10 @@ async function scrapeJobrightJobs(titles) {
         skippedExpired += 1;
         continue;
       }
+      if (mapped._linkedinApply) {
+        skippedLinkedin += 1;
+        continue;
+      }
       if (appliedIds.has(mapped.id)) {
         skippedApplied += 1;
         continue;
@@ -340,12 +349,13 @@ async function scrapeJobrightJobs(titles) {
         continue;
       }
       if (/linkedin\.com/i.test(mapped.url || "")) {
-        skippedStale += 1;
+        skippedLinkedin += 1;
         continue;
       }
 
       delete mapped._applyLink;
       delete mapped._isCompanySite;
+      delete mapped._linkedinApply;
       delete mapped._expired;
       byId.set(mapped.id, mapped);
     }
@@ -379,6 +389,7 @@ async function scrapeJobrightJobs(titles) {
       skippedApplied,
       skippedStale,
       skippedExpired,
+      skippedLinkedin,
       appliedTotal,
       csVersion: CS_VERSION,
       href: location.href,

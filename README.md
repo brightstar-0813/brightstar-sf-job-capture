@@ -9,7 +9,7 @@ Each run overwrites **one** combined CSV with the latest qualifying jobs from al
 - `download/jobs_latest.csv` — all sources together (`source` column marks Dice / JobRight / Built In / …). Rows posted in the last **24 hours** are sorted to the top (newest first); then by preferred source.
 - `download/store.json` — shared dedupe history
 
-**Source priority (same title+company):** Greenhouse/Lever/Ashby → Indeed → Dice → ZipRecruiter → Glassdoor → Built In → other aggregators → JobRight. **LinkedIn is not scraped**, and **LinkedIn apply/view URLs are never kept** (JobRight falls back to the JobRight page or a non-LinkedIn ATS/company link).
+**Source priority (same title+company):** Greenhouse/Lever/Ashby → Indeed → Dice → ZipRecruiter → Glassdoor → Built In → other aggregators → JobRight. **LinkedIn is not scraped.** JobRight listings whose apply/original URL is LinkedIn are **skipped** (not kept with a JobRight page URL either). LinkedIn URLs from any board are excluded from the store/CSV.
 
 Filter (applied to all sources):
 
@@ -53,7 +53,7 @@ A Chrome window opens. Pass the verification (sign in if asked) until Salesforce
 
 ### Logged-in Chrome extension (JobRight)
 
-The extension opens temporary background tabs using **your existing Chrome cookies** and posts qualifying JobRight jobs to the local API (JobRight `/swan/…`). **LinkedIn jobs and LinkedIn apply URLs are not kept.**
+The extension opens temporary background tabs using **your existing Chrome cookies** and posts qualifying JobRight jobs to the local API (JobRight `/swan/…`). **LinkedIn is not fetched.** JobRight jobs that redirect/apply via LinkedIn are skipped.
 
 **Requirements for extension auto-capture:**
 
@@ -135,4 +135,4 @@ Then load `extension/` unpacked in Chrome.
 
 - Personal job-hunting use; polite delays / page caps.
 - After JobRight UI changes, re-run `npm run jobright:login` if autofill jobs stop appearing.
-- LinkedIn is not scraped; LinkedIn URLs from any board are excluded from the store/CSV.
+- LinkedIn is not scraped; JobRight listings that apply via LinkedIn are skipped; LinkedIn URLs from any board are excluded from the store/CSV.

@@ -1,6 +1,6 @@
 /**
  * JobRight.ai Salesforce search — remote US roles via recommend/search API.
- * Company-site / ATS apply URLs are preferred; LinkedIn apply links are never kept.
+ * Company-site / ATS apply URLs are preferred; listings that apply via LinkedIn are skipped entirely.
  *
  * Jobs load via POST /swan/recommend/search (not __NEXT_DATA__.jobList).
  */
@@ -67,6 +67,9 @@ function mapApiJob(item) {
 
   const salary = parseSalary(jr.salaryDesc);
   const applyLink = String(jr.applyLink || jr.originalUrl || "").trim();
+  const originalUrl = String(jr.originalUrl || "").trim();
+  const redirectsToLinkedin =
+    /linkedin\.com/i.test(applyLink) || /linkedin\.com/i.test(originalUrl);
   const fallbackUrl = (
     jr.url ||
     `https://jobright.ai/jobs/info/${jr.jobId}`
@@ -113,6 +116,7 @@ function mapApiJob(item) {
     _easyApply: jr.jobtargetEasyapply === true,
     _applyLink: applyLink,
     _isCompanySite: jr.isCompanySiteLink === true,
+    _linkedinApply: redirectsToLinkedin,
     _expired: jr.isDeleted === true || jr.hiddenJob === true,
   };
 }
@@ -256,6 +260,7 @@ export async function searchJobrightJobs(browser) {
   let appliedSkipped = 0;
   let staleSkipped = 0;
   let expiredSkipped = 0;
+  let linkedinSkipped = 0;
   let apiCount = 0;
   let queryOkCount = 0;
   let appliedIds = new Set();
@@ -309,6 +314,10 @@ export async function searchJobrightJobs(browser) {
           expiredSkipped += 1;
           continue;
         }
+        if (mapped._linkedinApply) {
+          linkedinSkipped += 1;
+          continue;
+        }
         if (appliedIds.has(mapped.id)) {
           appliedSkipped += 1;
           continue;
@@ -330,13 +339,14 @@ export async function searchJobrightJobs(browser) {
           continue;
         }
         if (/linkedin\.com/i.test(mapped.url || "")) {
-          staleSkipped += 1;
+          linkedinSkipped += 1;
           continue;
         }
 
         delete mapped._easyApply;
         delete mapped._applyLink;
         delete mapped._isCompanySite;
+        delete mapped._linkedinApply;
         delete mapped._expired;
         all.push(mapped);
       }
@@ -356,6 +366,7 @@ export async function searchJobrightJobs(browser) {
       ` skipped Salesforce-employer=${employerSkipped},` +
       ` skipped non-remote=${nonRemoteSkipped}, skipped non-Salesforce=${nonSalesforceSkipped},` +
       ` skipped already-applied=${appliedSkipped}, skipped expired=${expiredSkipped},` +
+      ` skipped LinkedIn-apply=${linkedinSkipped},` +
       ` skipped stale(>${config.recentDays}d)=${staleSkipped})`
   );
   if (unauthenticated) {
