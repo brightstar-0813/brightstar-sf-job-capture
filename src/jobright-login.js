@@ -1,5 +1,6 @@
 /**
- * One-time JobRight login — saves Playwright storage state for autofill jobs.
+ * One-time JobRight login — saves session cookies for API-only capture.
+ * After this, scheduled runs call /swan/recommend/search directly (no browser UI).
  *
  * Usage: npm run jobright:login
  * A browser window opens; sign in to JobRight, then return here and press Enter.

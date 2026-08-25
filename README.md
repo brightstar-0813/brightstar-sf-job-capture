@@ -23,7 +23,7 @@ Filter (applied to all sources):
 | Source | How it runs | Notes |
 |--------|-------------|-------|
 | **Dice** | Windows Task Scheduler | Optional login for applied-job exclusion. Searches `SEARCH_QUERIES` (Salesforce, Health Cloud, Data Cloud, …) |
-| **JobRight** | Scheduler + saved Playwright login (or Chrome extension) | Needs `npm run jobright:login` (or use the logged-in extension) |
+| **JobRight** | Scheduler + `/swan` API (saved login) | `npm run jobright:login` once — **no Chrome extension or JobRight UI tabs** during capture |
 | **Built In** | Scheduler (Playwright) | Remote + keyword search; skips listings whose titles aren't Salesforce-related |
 | **Greenhouse / Lever / Ashby** | Scheduler (public company-board APIs) | Direct from employer career sites — Salesforce ISVs, partners, and companies that hire SF admins/devs (`GREENHOUSE_BOARDS`, `LEVER_BOARDS`, `ASHBY_BOARDS`) |
 | **Remotive / Jobicy / Remote OK / We Work Remotely** | Scheduler (public JSON/RSS) | No browser; not Cloudflare-gated — extra recent remote listings |
@@ -45,17 +45,25 @@ A browser opens — sign in, land on your dashboard, press Enter. The session is
 
 Indeed scraping is **off** (`CAPTURE_INDEED=false`). To re-enable: set `CAPTURE_INDEED=true`, run `npm run indeed:login` once (Cloudflare), then capture. JobRight apply links that point at Indeed are still kept when complete.
 
-### Logged-in Chrome extension (JobRight)
+### JobRight (API-only — recommended)
 
-The extension opens temporary background tabs using **your existing Chrome cookies** and posts qualifying JobRight jobs to the local API (JobRight `/swan/…`). **LinkedIn is not fetched.** JobRight jobs that redirect/apply via LinkedIn are skipped.
+JobRight is fetched via **`POST /swan/recommend/search`** using cookies saved by a one-time login. No Chrome extension and no JobRight search pages are opened during scheduled capture.
 
-**Requirements for extension auto-capture:**
+```bash
+npm run jobright:login
+```
+
+Sign in once in the browser window, press Enter. Cookies are saved to `download/jobright-auth.json` and reused on every run. Re-run when capture logs say the session expired.
+
+Set `CAPTURE_JOBRIGHT=true` (default). The Chrome extension under `extension/` is **optional** legacy — you do not need it for JobRight.
+
+### Chrome extension (optional)
+
+The extension can still post JobRight jobs using your Chrome cookies if you prefer that path. **LinkedIn is not fetched.** Most users should use API-only JobRight above instead.
 
 1. Stay signed in to [jobright.ai](https://jobright.ai) in Chrome
-2. API auto-starts at Windows logon (`npm run schedule:api`) — no manual `npm start`
-3. Open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select this repo’s `extension/` folder
-4. After code updates, click **Reload** on the extension
-5. Optional: click the toolbar icon once to run JobRight now (badge shows `OK` / `!`). There is no popup UI — capture is scheduled every 8 hours (12 AM, 8 AM, 4 PM) while Chrome is open.
+2. API auto-starts at Windows logon (`npm run schedule:api`)
+3. Load `extension/` unpacked in Chrome if you want extension-based JobRight
 
 Export CSV from `download/jobs_latest.csv` or `http://127.0.0.1:3847/api/export.csv`. Full multi-board capture still runs from Task Scheduler / `npm run capture`.
 
@@ -70,9 +78,9 @@ npm run schedule:install
 | Task | What it does |
 |------|----------------|
 | `DiceJobCapture_Every8Hours` | Runs capture every **8 hours** (12 AM, 8 AM, 4 PM local) |
-| `DiceJobCapture_API_AtLogon` | Starts `node src/server.js` when you log in (so extension sources can ingest) |
+| `DiceJobCapture_API_AtLogon` | Starts `node src/server.js` when you log in (local API + cron) |
 
-You do **not** need to open Cursor or type `npm start` after that — just reboot/login once, stay signed in to JobRight in Chrome, and keep the extension loaded.
+You do **not** need to open Cursor or type `npm start` after that — run `npm run jobright:login` once for JobRight. Chrome extension is optional.
 
 Optional checks:
 
@@ -111,7 +119,7 @@ Then load `extension/` unpacked in Chrome.
 | Key | Meaning |
 |-----|---------|
 | `CAPTURE_DICE` | `true`/`false` |
-| `CAPTURE_JOBRIGHT` | Playwright JobRight (`false` = use extension) |
+| `CAPTURE_JOBRIGHT` | JobRight via `/swan` API + `jobright-auth.json` (`true` by default). Extension not required |
 | `CAPTURE_REMOTIVE` / `CAPTURE_JOBICY` / `CAPTURE_REMOTEOK` / `CAPTURE_WWR` | Extra JSON/RSS sources (`true` by default) |
 | `CAPTURE_HIMALAYAS` / `CAPTURE_JOBGETHER` / `CAPTURE_ARBEITNOW` | Extra public JSON APIs (`true` by default) |
 | `CAPTURE_GOOGLEJOBS` / `SERPAPI_KEY` | Google Jobs via SerpAPI (skipped until a key is set) |
