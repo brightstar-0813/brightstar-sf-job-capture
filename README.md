@@ -1,6 +1,6 @@
 # Salesforce Job Capture (multi-source)
 
-Capture **remote Salesforce-ecosystem** jobs from Dice, JobRight, Built In, company career boards (Greenhouse / Lever / Ashby), Remotive, Jobicy, Remote OK, We Work Remotely, Himalayas, Jobgether, Arbeitnow, ZipRecruiter, Monster, CareerBuilder, and optional Google Jobs **twice daily (5:00 AM and 5:00 PM local time)**, append/dedupe locally, update one combined CSV, and Slack-notify on new jobs.
+Capture **remote Salesforce-ecosystem** jobs from Dice, JobRight, Built In, company career boards (Greenhouse / Lever / Ashby), Remotive, Jobicy, Remote OK, We Work Remotely, Himalayas, Jobgether, Arbeitnow, ZipRecruiter, Monster, CareerBuilder, and optional Google Jobs **every 8 hours**, append/dedupe locally, update one combined CSV, and Slack-notify on new jobs.
 
 ## What gets saved
 
@@ -55,11 +55,11 @@ The extension opens temporary background tabs using **your existing Chrome cooki
 2. API auto-starts at Windows logon (`npm run schedule:api`) — no manual `npm start`
 3. Open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select this repo’s `extension/` folder
 4. After code updates, click **Reload** on the extension
-5. Optional: click the toolbar icon once to run JobRight now (badge shows `OK` / `!`). There is no popup UI — capture is scheduled at 5 AM and 5 PM while Chrome is open.
+5. Optional: click the toolbar icon once to run JobRight now (badge shows `OK` / `!`). There is no popup UI — capture is scheduled every 8 hours (12 AM, 8 AM, 4 PM) while Chrome is open.
 
 Export CSV from `download/jobs_latest.csv` or `http://127.0.0.1:3847/api/export.csv`. Full multi-board capture still runs from Task Scheduler / `npm run capture`.
 
-## Fully automatic — daily at 5 AM and 5 PM (Windows)
+## Fully automatic — every 8 hours (Windows)
 
 Install **both** scheduled tasks (Dice capture + API at logon):
 
@@ -69,7 +69,7 @@ npm run schedule:install
 
 | Task | What it does |
 |------|----------------|
-| `DiceJobCapture_5am5pm` | Runs capture daily at **5:00 AM** and **5:00 PM** (local time) |
+| `DiceJobCapture_Every8Hours` | Runs capture every **8 hours** (12 AM, 8 AM, 4 PM local) |
 | `DiceJobCapture_API_AtLogon` | Starts `node src/server.js` when you log in (so extension sources can ingest) |
 
 You do **not** need to open Cursor or type `npm start` after that — just reboot/login once, stay signed in to JobRight in Chrome, and keep the extension loaded.
@@ -77,9 +77,9 @@ You do **not** need to open Cursor or type `npm start` after that — just reboo
 Optional checks:
 
 ```powershell
-Get-ScheduledTask -TaskName DiceJobCapture_5am5pm, DiceJobCapture_API_AtLogon
+Get-ScheduledTask -TaskName DiceJobCapture_Every8Hours, DiceJobCapture_API_AtLogon
 Start-ScheduledTask -TaskName DiceJobCapture_API_AtLogon
-Start-ScheduledTask -TaskName DiceJobCapture_5am5pm
+Start-ScheduledTask -TaskName DiceJobCapture_Every8Hours
 ```
 
 Individual installs: `npm run schedule:dice` or `npm run schedule:api`.
@@ -123,7 +123,7 @@ Then load `extension/` unpacked in Chrome.
 | `JOBRIGHT_AUTH_PATH` | Playwright login state |
 | `CSV_PREFIX_DICE` / `CSV_PREFIX_JOBRIGHT` | Dated filename prefixes |
 | `DATA_DIR` | Output folder (`download`) |
-| `CRON_SCHEDULE` | Used by `npm start` only |
+| `CRON_SCHEDULE` | Used by `npm start` only (default `0 */8 * * *` = every 8 hours) |
 
 ## Notes
 

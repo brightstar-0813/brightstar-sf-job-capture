@@ -1,17 +1,18 @@
 /**
- * Background: schedule JobRight scrape daily at 5:00 AM and 5:00 PM (local time)
+ * Background: schedule JobRight scrape every 8 hours (local time: 12 AM, 8 AM, 4 PM)
  * using the user's logged-in Chrome session. LinkedIn is not scraped.
  */
 
 const API = "http://127.0.0.1:3847";
-const ALARM = "salesforce-capture-daily";
+const ALARM = "salesforce-capture-8h";
 const LEGACY_ALARMS = [
+  "salesforce-capture-daily",
   "jobright-capture-daily",
   "jobright-capture-8h",
   "jobright-capture-12h",
 ];
-/** Local hours (24h) when extension capture runs — 5 AM and 5 PM. */
-const RUN_HOURS = [5, 17];
+/** Local hours (24h) when extension capture runs — every 8 hours. */
+const RUN_HOURS = [0, 8, 16];
 
 /** Same role-family seeds as Playwright JOBRIGHT_TITLES (not title filters). */
 const DEFAULT_TITLES = [

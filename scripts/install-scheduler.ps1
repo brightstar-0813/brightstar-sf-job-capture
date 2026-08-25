@@ -1,13 +1,13 @@
-# Register a Windows Scheduled Task to run capture daily at 5:00 AM and 5:00 PM (local time).
+# Register a Windows Scheduled Task to run capture every 8 hours (local time).
 #   npm run schedule:install
 # or:
 #   powershell -ExecutionPolicy Bypass -File scripts\install-scheduler.ps1
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
-$taskName = "DiceJobCapture_5am5pm"
+$taskName = "DiceJobCapture_Every8Hours"
 $legacyTaskNames = @(
-  "DiceJobCapture_Every8Hours",
+  "DiceJobCapture_5am5pm",
   "DiceJobCapture_Every12Hours"
 )
 
@@ -32,8 +32,10 @@ $action = New-ScheduledTaskAction `
   -Argument "src\capture.js" `
   -WorkingDirectory $root
 
-$triggerAm = New-ScheduledTaskTrigger -Daily -At "5:00AM"
-$triggerPm = New-ScheduledTaskTrigger -Daily -At "5:00PM"
+# Fixed local times matching CRON_SCHEDULE=0 */8 * * * (12 AM, 8 AM, 4 PM)
+$trigger0 = New-ScheduledTaskTrigger -Daily -At "12:00AM"
+$trigger8 = New-ScheduledTaskTrigger -Daily -At "8:00AM"
+$trigger16 = New-ScheduledTaskTrigger -Daily -At "4:00PM"
 
 $settings = New-ScheduledTaskSettingsSet `
   -AllowStartIfOnBatteries `
@@ -50,10 +52,10 @@ $principal = New-ScheduledTaskPrincipal `
 Register-ScheduledTask `
   -TaskName $taskName `
   -Action $action `
-  -Trigger @($triggerAm, $triggerPm) `
+  -Trigger @($trigger0, $trigger8, $trigger16) `
   -Settings $settings `
   -Principal $principal `
-  -Description "Capture remote Salesforce jobs daily at 5:00 AM and 5:00 PM" `
+  -Description "Capture remote Salesforce jobs every 8 hours (12 AM, 8 AM, 4 PM local)" `
   -Force | Out-Null
 
 foreach ($legacyTaskName in $legacyTaskNames) {
@@ -64,6 +66,6 @@ foreach ($legacyTaskName in $legacyTaskNames) {
   }
 }
 
-Write-Host "Scheduled task '$taskName' installed (daily 5:00 AM and 5:00 PM local, runs whether logged on or not)."
+Write-Host "Scheduled task '$taskName' installed (every 8 hours: 12 AM, 8 AM, 4 PM local)."
 Write-Host "Run now:  Start-ScheduledTask -TaskName '$taskName'"
 Write-Host "JobRight: use Chrome extension + API autostart (npm run schedule:api)"
