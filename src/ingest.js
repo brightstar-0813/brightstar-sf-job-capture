@@ -11,6 +11,7 @@ import {
   syncCsv,
   getMeta,
   pruneStore,
+  repairJobrightUrls,
 } from "./store.js";
 import { notifyCaptureComplete } from "./slack.js";
 import { config } from "./config.js";
@@ -79,6 +80,7 @@ export async function ingestJobsPayload(jobs, opts = {}) {
     }
   }
 
+  repairJobrightUrls();
   pruneStore();
   const files = syncCsv();
   finishRun(runId, counts);

@@ -7,6 +7,10 @@ import {
   isRecentJob,
   parsePostedDate,
 } from "./filter.js";
+import {
+  isIncompleteExternalJobUrl,
+  repairJobrightStoredUrl,
+} from "./jobright/url.js";
 
 /** Career-board sources: still listed = still open, even if date_posted is old. */
 const ATS_SOURCES = new Set(["greenhouse", "lever", "ashby"]);
@@ -113,6 +117,39 @@ function preferJob(a, b) {
   const bSeen = String(b.last_seen_at || b.first_seen_at || "");
   if (bSeen !== aSeen) return bSeen > aSeen ? b : a;
   return a;
+}
+
+function urlQuality(url) {
+  const u = String(url || "").trim();
+  if (!u) return 0;
+  if (isIncompleteExternalJobUrl(u)) return 1;
+  if (/\/apply\/?$/i.test(u)) return 2;
+  if (/jobright\.ai\/jobs\/info\//i.test(u)) return 3;
+  return 4;
+}
+
+function preferStoredUrl(...urls) {
+  let best = "";
+  let bestQ = -1;
+  for (const u of urls) {
+    const s = String(u || "").trim();
+    if (!s) continue;
+    const q = urlQuality(s);
+    if (q > bestQ) {
+      best = s;
+      bestQ = q;
+    }
+  }
+  return best;
+}
+
+function preferStoredDescription(...descs) {
+  let best = "";
+  for (const d of descs) {
+    const s = String(d || "");
+    if (s.length > best.length) best = s;
+  }
+  return best;
 }
 
 function findJobByFingerprint(jobs, fingerprint, exceptId) {
@@ -324,12 +361,12 @@ export function upsertJob(scraped, runId) {
           winner.source ||
           twin.source ||
           base.source,
-        url: winner.url || twin.url || base.url,
-        description:
-          String(winner.description || "").length >=
-          String(twin.description || "").length
-            ? winner.description
-            : twin.description || base.description,
+        url: preferStoredUrl(winner.url, twin.url, base.url),
+        description: preferStoredDescription(
+          winner.description,
+          twin.description,
+          base.description
+        ),
         date_posted: winner.date_posted || twin.date_posted || base.date_posted,
         first_seen_run_id: twin.first_seen_run_id,
         last_seen_run_id: runId,
@@ -359,6 +396,8 @@ export function upsertJob(scraped, runId) {
 
   const job = {
     ...base,
+    url: preferStoredUrl(base.url, existing.url),
+    description: preferStoredDescription(base.description, existing.description),
     first_seen_run_id: existing.first_seen_run_id,
     last_seen_run_id: runId,
     first_seen_at: existing.first_seen_at,
@@ -448,6 +487,26 @@ export function removeJobsWhere(predicate) {
   }
   if (removed > 0) save();
   return { removed, kept: Object.keys(s.jobs).length };
+}
+
+/**
+ * Fix incomplete JobRight apply URLs (Indeed/Greenhouse shells, Lever /apply)
+ * that were stored after query params were stripped.
+ * @returns {{ repaired: number }}
+ */
+export function repairJobrightUrls() {
+  const s = load();
+  let repaired = 0;
+  for (const job of Object.values(s.jobs)) {
+    if (!isJobrightJob(job)) continue;
+    const next = repairJobrightStoredUrl(job);
+    if (next && next !== job.url) {
+      job.url = next;
+      repaired += 1;
+    }
+  }
+  if (repaired > 0) save();
+  return { repaired };
 }
 
 /**

@@ -1,6 +1,6 @@
 # Salesforce Job Capture (multi-source)
 
-Capture **remote Salesforce-ecosystem** jobs from Dice, JobRight, Built In, company career boards (Greenhouse / Lever / Ashby), Remotive, Jobicy, Remote OK, We Work Remotely, Himalayas, Jobgether, Arbeitnow, ZipRecruiter, Monster, Indeed, CareerBuilder, and optional Google Jobs **twice daily (5:00 AM and 5:00 PM local time)**, append/dedupe locally, update one combined CSV, and Slack-notify on new jobs.
+Capture **remote Salesforce-ecosystem** jobs from Dice, JobRight, Built In, company career boards (Greenhouse / Lever / Ashby), Remotive, Jobicy, Remote OK, We Work Remotely, Himalayas, Jobgether, Arbeitnow, ZipRecruiter, Monster, CareerBuilder, and optional Google Jobs **twice daily (5:00 AM and 5:00 PM local time)**, append/dedupe locally, update one combined CSV, and Slack-notify on new jobs.
 
 ## What gets saved
 
@@ -9,7 +9,7 @@ Each run overwrites **one** combined CSV with the latest qualifying jobs from al
 - `download/jobs_latest.csv` — all sources together (`source` column marks Dice / JobRight / Built In / …). Rows posted in the last **24 hours** are sorted to the top (newest first); then by preferred source.
 - `download/store.json` — shared dedupe history
 
-**Source priority (same title+company):** Greenhouse/Lever/Ashby → Indeed → Dice → ZipRecruiter → Glassdoor → Built In → other aggregators → JobRight. **LinkedIn is not scraped.** JobRight listings whose apply/original URL is LinkedIn are **skipped** (not kept with a JobRight page URL either). LinkedIn URLs from any board are excluded from the store/CSV.
+**Source priority (same title+company):** Greenhouse/Lever/Ashby → Indeed → Dice → ZipRecruiter → Glassdoor → Built In → other aggregators → JobRight. **LinkedIn is not scraped.** JobRight listings whose apply/original URL is LinkedIn are **skipped** (not kept with a JobRight page URL either). LinkedIn URLs from any board are excluded from the store/CSV. JobRight apply URLs keep required query params (Indeed `jk=`, Greenhouse `token`/`gh_jid`); incomplete ATS shells fall back to the JobRight job page; Lever `…/apply` is stored as the posting page. JDs are built from JobRight summary + responsibilities + qualifications.
 
 Filter (applied to all sources):
 
@@ -29,7 +29,7 @@ Filter (applied to all sources):
 | **Remotive / Jobicy / Remote OK / We Work Remotely** | Scheduler (public JSON/RSS) | No browser; not Cloudflare-gated — extra recent remote listings |
 | **Himalayas / Jobgether / Arbeitnow** | Scheduler (public JSON APIs) | No browser. Jobgether’s offer API; Himalayas remote search. Arbeitnow is EU-heavy so few US hits. |
 | **Google Jobs** | Scheduler (SerpAPI, optional) | Google has no free Jobs API. Set `SERPAPI_KEY` to enable. |
-| **ZipRecruiter / Monster / Indeed / CareerBuilder** | Scheduler (Playwright) | Often Cloudflare/bot-blocked in headless — may return 0; expired listings are skipped. Indeed searches all `SEARCH_QUERIES` (deep pages on first query) after `npm run indeed:login` |
+| **ZipRecruiter / Monster / CareerBuilder** | Scheduler (Playwright) | Often Cloudflare/bot-blocked in headless — may return 0; expired listings are skipped. **Indeed is off by default** (`CAPTURE_INDEED=false`) |
 
 ### Optional: skip already-applied Dice jobs
 
@@ -41,15 +41,9 @@ npm run dice:login
 
 A browser opens — sign in, land on your dashboard, press Enter. The session is saved to `download/dice-auth.json` and reused on every run. When it expires you'll get a Slack alert to re-run `npm run dice:login` (Dice capture keeps working meanwhile, just without applied-job exclusion).
 
-### Indeed (Cloudflare)
+### Indeed (disabled by default)
 
-Indeed blocks headless Chrome until you complete their check once:
-
-```bash
-npm run indeed:login
-```
-
-A Chrome window opens. Pass the verification (sign in if asked) until Salesforce job cards are visible, then press Enter. Capture reuses `download/indeed-profile`. Re-run login when the log says Cloudflare challenge.
+Indeed scraping is **off** (`CAPTURE_INDEED=false`). To re-enable: set `CAPTURE_INDEED=true`, run `npm run indeed:login` once (Cloudflare), then capture. JobRight apply links that point at Indeed are still kept when complete.
 
 ### Logged-in Chrome extension (JobRight)
 
@@ -123,7 +117,7 @@ Then load `extension/` unpacked in Chrome.
 | `CAPTURE_GOOGLEJOBS` / `SERPAPI_KEY` | Google Jobs via SerpAPI (skipped until a key is set) |
 | `CAPTURE_LEVER` / `CAPTURE_ASHBY` | Company career boards on Lever / Ashby (`true` by default) |
 | `GREENHOUSE_BOARDS` / `LEVER_BOARDS` / `ASHBY_BOARDS` | Comma-separated company board tokens to poll |
-| `CAPTURE_INDEED` / `CAPTURE_CAREERBUILDER` | Extra Playwright boards (`true` by default). Indeed needs `npm run indeed:login` |
+| `CAPTURE_INDEED` / `CAPTURE_CAREERBUILDER` | Extra Playwright boards. Indeed defaults **off**; CareerBuilder defaults on |
 | `SEARCH_QUERIES` | Comma-separated Dice/Built In/Remotive searches (default includes Health Cloud, Data Cloud, Marketing Cloud, Service Cloud, Agentforce, OmniStudio, Salesforce CPQ) |
 | `EXCLUDE_BID_TRACKING_SHEET` / `BID_TRACKING_SHEET_URL` | Skip jobs whose Link is already on the bid-tracking sheet |
 | `JOBRIGHT_AUTH_PATH` | Playwright login state |

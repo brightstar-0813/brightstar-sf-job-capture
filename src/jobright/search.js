@@ -15,6 +15,11 @@ import {
   parsePostedDate,
   isWithinRecentDays,
 } from "../filter.js";
+import {
+  isLinkedinJobUrl,
+  pickJobrightJobUrl,
+  buildJobrightDescription,
+} from "./url.js";
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -47,18 +52,6 @@ function parseSalary(salaryDesc) {
   return { min: "", max: "", unit: "" };
 }
 
-function buildDescription(jr) {
-  const parts = [];
-  if (jr.jobSummary) parts.push(String(jr.jobSummary).trim());
-  if (Array.isArray(jr.coreResponsibilities) && jr.coreResponsibilities.length) {
-    parts.push("Responsibilities:\n- " + jr.coreResponsibilities.join("\n- "));
-  }
-  if (Array.isArray(jr.requirements) && jr.requirements.length) {
-    parts.push("Requirements:\n- " + jr.requirements.join("\n- "));
-  }
-  return parts.join("\n\n").trim();
-}
-
 function mapApiJob(item) {
   const jr = item?.jobResult || {};
   const company = item?.companyResult || {};
@@ -69,20 +62,8 @@ function mapApiJob(item) {
   const applyLink = String(jr.applyLink || jr.originalUrl || "").trim();
   const originalUrl = String(jr.originalUrl || "").trim();
   const redirectsToLinkedin =
-    /linkedin\.com/i.test(applyLink) || /linkedin\.com/i.test(originalUrl);
-  const fallbackUrl = (
-    jr.url ||
-    `https://jobright.ai/jobs/info/${jr.jobId}`
-  ).split("?")[0];
-  // Prefer company-site / ATS apply links over JobRight page. Never use LinkedIn.
-  const preferApply =
-    applyLink &&
-    !/linkedin\.com/i.test(applyLink) &&
-    (jr.isCompanySiteLink === true ||
-      /greenhouse\.io|jobs\.lever\.co|ashbyhq\.com|indeed\.com|dice\.com/i.test(
-        applyLink
-      ));
-  const url = (preferApply ? applyLink : fallbackUrl).split("?")[0];
+    isLinkedinJobUrl(applyLink) || isLinkedinJobUrl(originalUrl);
+  const url = pickJobrightJobUrl(jr);
 
   // Prefer the absolute epoch publishTime; fall back to the relative desc.
   const postedAbs = parsePostedDate(jr.publishTime) || parsePostedDate(jr.publishTimeDesc);
@@ -112,7 +93,7 @@ function mapApiJob(item) {
     source: "jobright",
     date_posted: datePosted,
     url,
-    description: buildDescription(jr),
+    description: buildJobrightDescription(jr),
     _easyApply: jr.jobtargetEasyapply === true,
     _applyLink: applyLink,
     _isCompanySite: jr.isCompanySiteLink === true,

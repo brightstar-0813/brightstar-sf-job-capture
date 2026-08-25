@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Salesforce Remote Job Capture",
   "description": "Headless JobRight capture using your logged-in Chrome session. Runs at 5 AM and 5 PM; click the icon to run now. Jobs land in jobs_latest.csv via the local API.",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "permissions": ["storage", "alarms", "tabs", "scripting"],
   "host_permissions": [
     "http://127.0.0.1:3847/*",

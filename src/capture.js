@@ -1,8 +1,9 @@
 /**
  * Capture Salesforce jobs from Dice, JobRight, Built In, company ATS boards
  * (Greenhouse / Lever / Ashby), Remotive, Jobicy, Remote OK, We Work Remotely,
- * ZipRecruiter, Monster, Indeed, CareerBuilder, Himalayas, Jobgether,
+ * ZipRecruiter, Monster, CareerBuilder, Himalayas, Jobgether,
  * Arbeitnow, and optional Google Jobs (SerpAPI). Task Scheduler / cron entrypoint.
+ * Indeed scraping is disabled by default (CAPTURE_INDEED=false).
  */
 
 import { chromium } from "playwright";
@@ -36,6 +37,7 @@ import {
   closeStore,
   getMeta,
   pruneStore,
+  repairJobrightUrls,
   removeJobs,
   removeJobsWhere,
 } from "./store.js";
@@ -267,6 +269,13 @@ export async function runCapture({ skipSlack = false } = {}) {
           }
         }
       });
+    }
+
+    const repaired = repairJobrightUrls();
+    if (repaired.repaired > 0) {
+      console.log(
+        `[capture] repaired ${repaired.repaired} incomplete JobRight URLs`
+      );
     }
 
     const pruned = pruneStore();

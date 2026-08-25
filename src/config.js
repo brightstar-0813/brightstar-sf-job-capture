@@ -67,8 +67,8 @@ export const config = {
   captureZiprecruiter: bool("CAPTURE_ZIPRECRUITER", true),
   /** Often empty/blocked in headless — on by default but may yield 0. */
   captureMonster: bool("CAPTURE_MONSTER", true),
-  /** Needs `npm run indeed:login` — Cloudflare blocks anonymous headless. */
-  captureIndeed: bool("CAPTURE_INDEED", true),
+  /** Indeed scrape disabled — set CAPTURE_INDEED=true to re-enable. */
+  captureIndeed: bool("CAPTURE_INDEED", false),
   captureCareerbuilder: bool("CAPTURE_CAREERBUILDER", true),
   /** Public JSON APIs — no browser, not Cloudflare-gated. */
   captureRemotive: bool("CAPTURE_REMOTIVE", true),
