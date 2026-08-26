@@ -1,6 +1,6 @@
 # Salesforce Job Capture (multi-source)
 
-Capture **remote Salesforce-ecosystem** jobs from Dice, JobRight, Built In, company career boards (Greenhouse / Lever / Ashby), Remotive, Jobicy, Remote OK, We Work Remotely, Himalayas, Jobgether, Arbeitnow, ZipRecruiter, Monster, CareerBuilder, and optional Google Jobs **every 8 hours**, append/dedupe locally, update one combined CSV, and Slack-notify on new jobs.
+Capture **remote Salesforce-ecosystem** jobs from **public APIs first** (Greenhouse / Lever / Ashby boards, Remotive, Jobicy, Remote OK, We Work Remotely, Himalayas, Jobgether, Arbeitnow, The Muse), plus Dice, JobRight, Built In, and optional Google Jobs (SerpAPI) **every 8 hours**. Flaky Playwright boards (ZipRecruiter / Monster / CareerBuilder / Indeed) are **off by default**.
 
 ## What gets saved
 
@@ -28,10 +28,10 @@ Filter (applied to all sources):
 | **JobRight** | Scheduler + `/swan` API (saved login) | `npm run jobright:login` once — **no Chrome extension or JobRight UI tabs** during capture |
 | **Built In** | Scheduler (Playwright) | Remote + keyword search; skips listings whose titles aren't Salesforce-related |
 | **Greenhouse / Lever / Ashby** | Scheduler (public company-board APIs) | Direct from employer career sites — Salesforce ISVs, partners, and companies that hire SF admins/devs (`GREENHOUSE_BOARDS`, `LEVER_BOARDS`, `ASHBY_BOARDS`) |
-| **Remotive / Jobicy / Remote OK / We Work Remotely** | Scheduler (public JSON/RSS) | No browser; not Cloudflare-gated — extra recent remote listings |
+| **Remotive / Jobicy / Remote OK / We Work Remotely / The Muse** | Scheduler (public JSON/RSS) | No browser; not Cloudflare-gated — extra recent remote listings |
 | **Himalayas / Jobgether / Arbeitnow** | Scheduler (public JSON APIs) | No browser. Jobgether’s offer API; Himalayas remote search. Arbeitnow is EU-heavy so few US hits. |
 | **Google Jobs** | Scheduler (SerpAPI, optional) | Google has no free Jobs API. Set `SERPAPI_KEY` to enable. |
-| **ZipRecruiter / Monster / CareerBuilder** | Scheduler (Playwright) | Often Cloudflare/bot-blocked in headless — may return 0; expired listings are skipped. **Indeed is off by default** (`CAPTURE_INDEED=false`) |
+| **ZipRecruiter / Monster / CareerBuilder / Indeed** | Scheduler (Playwright) | **Off by default** — often Cloudflare/bot-blocked. Enable via `CAPTURE_*=true` if needed. |
 
 ### Optional: skip already-applied Dice jobs
 
@@ -122,12 +122,13 @@ Then load `extension/` unpacked in Chrome.
 |-----|---------|
 | `CAPTURE_DICE` | `true`/`false` |
 | `CAPTURE_JOBRIGHT` | JobRight via `/swan` API + `jobright-auth.json` (`true` by default). Extension not required |
-| `CAPTURE_REMOTIVE` / `CAPTURE_JOBICY` / `CAPTURE_REMOTEOK` / `CAPTURE_WWR` | Extra JSON/RSS sources (`true` by default) |
+| `CAPTURE_REMOTIVE` / `CAPTURE_JOBICY` / `CAPTURE_REMOTEOK` / `CAPTURE_WWR` / `CAPTURE_THEMUSE` | Public JSON/RSS (`true` by default) |
 | `CAPTURE_HIMALAYAS` / `CAPTURE_JOBGETHER` / `CAPTURE_ARBEITNOW` | Extra public JSON APIs (`true` by default) |
 | `CAPTURE_GOOGLEJOBS` / `SERPAPI_KEY` | Google Jobs via SerpAPI (skipped until a key is set) |
 | `CAPTURE_LEVER` / `CAPTURE_ASHBY` | Company career boards on Lever / Ashby (`true` by default) |
 | `GREENHOUSE_BOARDS` / `LEVER_BOARDS` / `ASHBY_BOARDS` | Comma-separated company board tokens to poll |
-| `CAPTURE_INDEED` / `CAPTURE_CAREERBUILDER` | Extra Playwright boards. Indeed defaults **off**; CareerBuilder defaults on |
+| `CAPTURE_ZIPRECRUITER` / `CAPTURE_MONSTER` / `CAPTURE_CAREERBUILDER` / `CAPTURE_INDEED` | Playwright boards — **off by default** (Cloudflare / empty) |
+| `JOBICY_TAGS` | Jobicy API tags (default `salesforce,crm,mulesoft,apex`) |
 | `SEARCH_QUERIES` | Comma-separated Dice/Built In/Remotive searches (default includes Health Cloud, Data Cloud, Marketing Cloud, Service Cloud, Agentforce, OmniStudio, Salesforce CPQ) |
 | `EXCLUDE_BID_TRACKING_SHEET` / `BID_TRACKING_SHEET_URL` | Skip jobs whose Link is already on the bid-tracking sheet |
 | `JOBRIGHT_AUTH_PATH` | Playwright login state |

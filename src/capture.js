@@ -1,9 +1,8 @@
 /**
- * Capture Salesforce jobs from Dice, JobRight, Built In, company ATS boards
- * (Greenhouse / Lever / Ashby), Remotive, Jobicy, Remote OK, We Work Remotely,
- * ZipRecruiter, Monster, CareerBuilder, Himalayas, Jobgether,
- * Arbeitnow, and optional Google Jobs (SerpAPI). Task Scheduler / cron entrypoint.
- * Indeed scraping is disabled by default (CAPTURE_INDEED=false).
+ * Capture Salesforce jobs — public APIs/feeds first (Greenhouse, Lever, Ashby,
+ * Remotive, Jobicy, Remote OK, WWR, Himalayas, Jobgether, Arbeitnow, The Muse),
+ * plus Dice, JobRight, Built In. ZipRecruiter / Monster / CareerBuilder / Indeed
+ * are off by default. Optional Google Jobs via SerpAPI.
  */
 
 import { chromium } from "playwright";
@@ -27,6 +26,7 @@ import { searchWwrJobs } from "./wwr/search.js";
 import { searchHimalayasJobs } from "./himalayas/search.js";
 import { searchJobgetherJobs } from "./jobgether/search.js";
 import { searchArbeitnowJobs } from "./arbeitnow/search.js";
+import { searchThemuseJobs } from "./themuse/search.js";
 import { searchGoogleJobs } from "./googlejobs/search.js";
 import { captureRuleReason, looksSalesforceTitle } from "./filter.js";
 import {
@@ -96,6 +96,7 @@ function enabledSources() {
   if (config.captureHimalayas) out.push("himalayas");
   if (config.captureJobgether) out.push("jobgether");
   if (config.captureArbeitnow) out.push("arbeitnow");
+  if (config.captureThemuse) out.push("themuse");
   if (config.captureGooglejobs) out.push("googlejobs");
   if (config.captureZiprecruiter) out.push("ziprecruiter");
   if (config.captureMonster) out.push("monster");
@@ -125,6 +126,7 @@ async function collectFeedJobs() {
   if (config.captureHimalayas) runners.push(["himalayas", searchHimalayasJobs]);
   if (config.captureJobgether) runners.push(["jobgether", searchJobgetherJobs]);
   if (config.captureArbeitnow) runners.push(["arbeitnow", searchArbeitnowJobs]);
+  if (config.captureThemuse) runners.push(["themuse", searchThemuseJobs]);
   if (config.captureGooglejobs) runners.push(["googlejobs", searchGoogleJobs]);
   if (!runners.length) return [];
 

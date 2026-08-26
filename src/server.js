@@ -58,6 +58,7 @@ app.get("/api/status", (_req, res) => {
       captureHimalayas: config.captureHimalayas,
       captureJobgether: config.captureJobgether,
       captureArbeitnow: config.captureArbeitnow,
+      captureThemuse: config.captureThemuse,
       captureGooglejobs: config.captureGooglejobs,
       captureZiprecruiter: config.captureZiprecruiter,
       captureMonster: config.captureMonster,
