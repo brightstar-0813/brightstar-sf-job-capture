@@ -65,10 +65,13 @@ export async function getJson(urlString, opts = {}) {
 }
 
 /** Like getJson, but returns { ok, status, json } without throwing on HTTP errors. */
-export async function tryGetJson(urlString, { timeoutMs = 20000 } = {}) {
+export async function tryGetJson(
+  urlString,
+  { timeoutMs = 20000, headers = {} } = {}
+) {
   try {
     const res = await fetch(urlString, {
-      headers: FETCH_HEADERS,
+      headers: { ...FETCH_HEADERS, ...headers },
       signal: AbortSignal.timeout(timeoutMs),
     });
     const text = await res.text();

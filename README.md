@@ -1,6 +1,6 @@
 # Salesforce Job Capture (multi-source)
 
-Capture **remote Salesforce-ecosystem** jobs from **public APIs first** (Greenhouse / Lever / Ashby boards, Remotive, Jobicy, Remote OK, We Work Remotely, Himalayas, Jobgether, Arbeitnow, The Muse), plus Dice, JobRight, Built In, and optional Google Jobs (SerpAPI) **every 8 hours**. Flaky Playwright boards (ZipRecruiter / Monster / CareerBuilder / Indeed) are **off by default**.
+Capture **remote Salesforce-ecosystem** jobs from **public APIs first** (Greenhouse / Lever / Ashby boards, Remotive, Jobicy, Remote OK, We Work Remotely, Working Nomads, Himalayas, Jobgether, Arbeitnow, The Muse, USAJOBS, Adzuna), plus Dice, JobRight, Built In, and optional Google Jobs (SerpAPI) **every 8 hours**. Flaky Playwright boards (ZipRecruiter / Monster / CareerBuilder / Indeed) are **off by default**.
 
 ## What gets saved
 
@@ -28,8 +28,9 @@ Filter (applied to all sources):
 | **JobRight** | Scheduler + `/swan` API (saved login) | `npm run jobright:login` once — **no Chrome extension or JobRight UI tabs** during capture |
 | **Built In** | Scheduler (Playwright) | Remote + keyword search; skips listings whose titles aren't Salesforce-related |
 | **Greenhouse / Lever / Ashby** | Scheduler (public company-board APIs) | Direct from employer career sites — Salesforce ISVs, partners, and companies that hire SF admins/devs (`GREENHOUSE_BOARDS`, `LEVER_BOARDS`, `ASHBY_BOARDS`) |
-| **Remotive / Jobicy / Remote OK / We Work Remotely / The Muse** | Scheduler (public JSON/RSS) | No browser; not Cloudflare-gated — extra recent remote listings |
+| **Remotive / Jobicy / Remote OK / We Work Remotely / Working Nomads / The Muse** | Scheduler (public JSON/RSS) | No browser; not Cloudflare-gated — extra recent remote listings |
 | **Himalayas / Jobgether / Arbeitnow** | Scheduler (public JSON APIs) | No browser. Jobgether’s offer API; Himalayas remote search. Arbeitnow is EU-heavy so few US hits. |
+| **USAJOBS / Adzuna** | Scheduler (public APIs, optional keys) | Federal remote roles (USAJOBS) and US aggregator (Adzuna). Free keys at [developer.usajobs.gov](https://developer.usajobs.gov) and [developer.adzuna.com](https://developer.adzuna.com). Skipped until keys are set. |
 | **Google Jobs** | Scheduler (SerpAPI, optional) | Google has no free Jobs API. Set `SERPAPI_KEY` to enable. |
 | **ZipRecruiter / Monster / CareerBuilder / Indeed** | Scheduler (Playwright) | **Off by default** — often Cloudflare/bot-blocked. Enable via `CAPTURE_*=true` if needed. |
 

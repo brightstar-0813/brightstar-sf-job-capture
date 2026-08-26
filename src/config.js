@@ -81,7 +81,17 @@ export const config = {
   captureJobgether: bool("CAPTURE_JOBGETHER", true),
   captureArbeitnow: bool("CAPTURE_ARBEITNOW", true),
   captureThemuse: bool("CAPTURE_THEMUSE", true),
+  /** Working Nomads public JSON feed — no key. */
+  captureWorkingnomads: bool("CAPTURE_WORKINGNOMADS", true),
+  /** USAJOBS federal API — free key at developer.usajobs.gov. */
+  captureUsajobs: bool("CAPTURE_USAJOBS", true),
+  /** Adzuna aggregator — free tier at developer.adzuna.com. */
+  captureAdzuna: bool("CAPTURE_ADZUNA", true),
   captureGooglejobs: bool("CAPTURE_GOOGLEJOBS", true),
+  usajobsApiKey: String(process.env.USAJOBS_API_KEY || "").trim(),
+  usajobsUserEmail: String(process.env.USAJOBS_USER_EMAIL || "").trim(),
+  adzunaAppId: String(process.env.ADZUNA_APP_ID || "").trim(),
+  adzunaAppKey: String(process.env.ADZUNA_APP_KEY || "").trim(),
   /** Jobicy API tags (public, no key). */
   jobicyTags: csvList("JOBICY_TAGS", [
     "salesforce",
@@ -393,6 +403,9 @@ export const SOURCE_IDS = [
   "jobgether",
   "arbeitnow",
   "themuse",
+  "workingnomads",
+  "usajobs",
+  "adzuna",
   "googlejobs",
   "ziprecruiter",
   "monster",
@@ -424,7 +437,10 @@ export const SOURCE_PRIORITY = [
   "jobicy",
   "remoteok",
   "wwr",
+  "workingnomads",
   "arbeitnow",
+  "usajobs",
+  "adzuna",
   "googlejobs",
   "jobright",
 ];
@@ -451,7 +467,10 @@ export const CSV_EXPORT_ORDER = [
   "jobicy",
   "remoteok",
   "wwr",
+  "workingnomads",
   "arbeitnow",
+  "usajobs",
+  "adzuna",
   "googlejobs",
   "ziprecruiter",
   "monster",
