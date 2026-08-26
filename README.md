@@ -7,6 +7,8 @@ Capture **remote Salesforce-ecosystem** jobs from Dice, JobRight, Built In, comp
 Each run overwrites **one** combined CSV with the latest qualifying jobs from all sources:
 
 - `download/jobs_latest.csv` — all sources together (`source` column marks Dice / JobRight / Built In / …). Rows posted in the last **24 hours** are sorted to the top (newest first); then by preferred source.
+- `download/{source}_jobs_latest.csv` — **one CSV per source** (e.g. `dice_jobs_latest.csv`, `jobright_jobs_latest.csv`, `greenhouse_jobs_latest.csv`, `jobgether_jobs_latest.csv`, …)
+- `download/workday_jobs_latest.csv` — jobs whose apply URL is Workday (often from JobRight), any capture source
 - `download/store.json` — shared dedupe history
 
 **Source priority (same title+company):** Greenhouse/Lever/Ashby → Indeed → Dice → ZipRecruiter → Glassdoor → Built In → other aggregators → JobRight. **LinkedIn is not scraped.** JobRight listings whose apply/original URL is LinkedIn are **skipped** (not kept with a JobRight page URL either). LinkedIn URLs from any board are excluded from the store/CSV. JobRight apply URLs keep required query params (Indeed `jk=`, Greenhouse `token`/`gh_jid`); incomplete ATS shells fall back to the JobRight job page; Lever `…/apply` is stored as the posting page. JDs are built from JobRight summary + responsibilities + qualifications.
@@ -65,7 +67,7 @@ The extension can still post JobRight jobs using your Chrome cookies if you pref
 2. API auto-starts at Windows logon (`npm run schedule:api`)
 3. Load `extension/` unpacked in Chrome if you want extension-based JobRight
 
-Export CSV from `download/jobs_latest.csv` or `http://127.0.0.1:3847/api/export.csv`. Full multi-board capture still runs from Task Scheduler / `npm run capture`.
+Export CSV from `download/jobs_latest.csv`, per-source files like `download/dice_jobs_latest.csv`, or `http://127.0.0.1:3847/api/export.csv` (optional `?source=dice`). Full multi-board capture still runs from Task Scheduler / `npm run capture`.
 
 ## Fully automatic — every 8 hours (Windows)
 
@@ -129,7 +131,8 @@ Then load `extension/` unpacked in Chrome.
 | `SEARCH_QUERIES` | Comma-separated Dice/Built In/Remotive searches (default includes Health Cloud, Data Cloud, Marketing Cloud, Service Cloud, Agentforce, OmniStudio, Salesforce CPQ) |
 | `EXCLUDE_BID_TRACKING_SHEET` / `BID_TRACKING_SHEET_URL` | Skip jobs whose Link is already on the bid-tracking sheet |
 | `JOBRIGHT_AUTH_PATH` | Playwright login state |
-| `CSV_PREFIX_DICE` / `CSV_PREFIX_JOBRIGHT` | Dated filename prefixes |
+| `CSV_PREFIX_DICE` / `CSV_PREFIX_JOBRIGHT` | Dated filename prefixes (legacy) |
+| Per-source latest CSVs | Always written as `download/{source}_jobs_latest.csv` plus `workday_jobs_latest.csv` for Workday apply URLs |
 | `DATA_DIR` | Output folder (`download`) |
 | `CRON_SCHEDULE` | Used by `npm start` only (default `0 */8 * * *` = every 8 hours) |
 

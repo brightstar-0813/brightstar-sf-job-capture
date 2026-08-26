@@ -73,13 +73,14 @@ function sourceFromId(id) {
   return SOURCE_IDS.includes(prefix) ? prefix : "";
 }
 
-/** Infer board from apply/view URL (e.g. JobRight → Greenhouse link). */
+/** Infer board from apply/view URL (e.g. JobRight → Greenhouse / Workday link). */
 function sourceHintFromUrl(url) {
   const u = String(url || "").toLowerCase();
   if (!u) return "";
   if (/boards\.greenhouse\.io|greenhouse\.io/.test(u)) return "greenhouse";
   if (/jobs\.lever\.co/.test(u)) return "lever";
   if (/jobs\.ashbyhq\.com|ashbyhq\.com/.test(u)) return "ashby";
+  if (/myworkdayjobs\.com|workday\.com\/.*\/job\//.test(u)) return "workday";
   if (/indeed\.com/.test(u)) return "indeed";
   if (/dice\.com/.test(u)) return "dice";
   if (/ziprecruiter\.com/.test(u)) return "ziprecruiter";
@@ -88,6 +89,26 @@ function sourceHintFromUrl(url) {
   if (/monster\.com/.test(u)) return "monster";
   if (/careerbuilder\.com/.test(u)) return "careerbuilder";
   return "";
+}
+
+function isWorkdayJobUrl(url) {
+  return sourceHintFromUrl(url) === "workday";
+}
+
+/** Safe CSV basename slug for a source id. */
+function csvSourceSlug(source) {
+  return String(source || "other")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "other";
+}
+
+/**
+ * Path for a per-source latest CSV, e.g. download/dice_jobs_latest.csv
+ * @param {string} source
+ */
+export function csvPathForSource(source) {
+  return path.join(config.dataDir, `${csvSourceSlug(source)}_jobs_latest.csv`);
 }
 
 /**
@@ -269,6 +290,12 @@ export function getStatus() {
       (j) => String(j.source || "").toLowerCase() === id
     ).length;
   }
+  let csvBySource = {};
+  try {
+    csvBySource = JSON.parse(getMeta("last_csv_by_source") || "{}");
+  } catch {
+    csvBySource = {};
+  }
   return {
     totalJobs: jobs.length,
     ...bySource,
@@ -278,6 +305,7 @@ export function getStatus() {
     lastRun: lastRun || null,
     csvPath: getMeta("last_csv_path"),
     latestCsv: config.csvLatestPath,
+    csvBySource,
     apiBase: config.apiBase,
   };
 }
@@ -510,9 +538,11 @@ export function repairJobrightUrls() {
 }
 
 /**
- * Write one combined CSV with the latest qualifying jobs from all sources.
- * Overwrites `jobs_latest.csv` (or CSV_LATEST_FILE) each run.
- * @returns {{ csvPath: string, latestPath: string, count: number }}
+ * Write combined + per-source CSVs with the latest qualifying jobs.
+ * - `jobs_latest.csv` — all sources
+ * - `{source}_jobs_latest.csv` — one file per capture source (dice, jobright, …)
+ * - `workday_jobs_latest.csv` — jobs whose apply URL is Workday (any source)
+ * @returns {{ csvPath: string, latestPath: string, count: number, bySource: Record<string, { path: string, count: number }> }}
  */
 function csvSourceRank(job) {
   return sourcePriorityRank(job);
@@ -534,18 +564,9 @@ function isPostedWithinHours(job, hours, now = new Date()) {
   return ageMs <= hours * 60 * 60 * 1000;
 }
 
-export function syncCsv(rows = null) {
-  const all = rows || allJobs();
-  const now = new Date();
-  const clean = (all || [])
-    .filter((j) => matchesOutputRule(j))
-    .map((j) => {
-      if (isJobrightJob(j)) return { ...j, source: "jobright" };
-      const idSrc = sourceFromId(j.id);
-      return idSrc && idSrc !== j.source ? { ...j, source: idSrc } : j;
-    });
-  // Fresh (<24h) first → newest posted → preferred source (company/Indeed/Dice…).
-  clean.sort((a, b) => {
+function sortJobsForCsv(jobs, now = new Date()) {
+  const list = [...(jobs || [])];
+  list.sort((a, b) => {
     const aFresh = isPostedWithinHours(a, 24, now) ? 0 : 1;
     const bFresh = isPostedWithinHours(b, 24, now) ? 0 : 1;
     if (aFresh !== bFresh) return aFresh - bFresh;
@@ -560,12 +581,61 @@ export function syncCsv(rows = null) {
       String(a.last_seen_at || "")
     );
   });
+  return list;
+}
+
+export function syncCsv(rows = null) {
+  const all = rows || allJobs();
+  const now = new Date();
+  const clean = sortJobsForCsv(
+    (all || [])
+      .filter((j) => matchesOutputRule(j))
+      .map((j) => {
+        if (isJobrightJob(j)) return { ...j, source: "jobright" };
+        const idSrc = sourceFromId(j.id);
+        return idSrc && idSrc !== j.source ? { ...j, source: idSrc } : j;
+      }),
+    now
+  );
 
   const latestPath = config.csvLatestPath;
   writeCsv(latestPath, clean);
+
+  const bySource = {};
+  const buckets = new Map();
+  for (const job of clean) {
+    const src = csvSourceSlug(job.source || sourceFromId(job.id) || "other");
+    if (!buckets.has(src)) buckets.set(src, []);
+    buckets.get(src).push(job);
+  }
+
+  // Always refresh known sources (empty file when none) so stale CSVs don't linger.
+  const sourcesToWrite = new Set([...SOURCE_IDS, ...buckets.keys()]);
+  for (const src of sourcesToWrite) {
+    const list = sortJobsForCsv(buckets.get(src) || [], now);
+    const filePath = csvPathForSource(src);
+    writeCsv(filePath, list);
+    bySource[src] = { path: filePath, count: list.length };
+  }
+
+  // Workday apply URLs (usually via JobRight / aggregators) — extra board view.
+  const workdayJobs = sortJobsForCsv(
+    clean.filter((j) => isWorkdayJobUrl(j.url)),
+    now
+  );
+  const workdayPath = csvPathForSource("workday");
+  writeCsv(workdayPath, workdayJobs);
+  bySource.workday = { path: workdayPath, count: workdayJobs.length };
+
   setMeta("last_csv_path", latestPath);
   setMeta("last_csv_latest_path", latestPath);
-  return { csvPath: latestPath, latestPath, count: clean.length };
+  setMeta("last_csv_by_source", JSON.stringify(bySource));
+  return {
+    csvPath: latestPath,
+    latestPath,
+    count: clean.length,
+    bySource,
+  };
 }
 
 export function closeStore() {

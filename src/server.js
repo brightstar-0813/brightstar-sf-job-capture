@@ -170,10 +170,21 @@ app.post("/api/ingest", async (req, res) => {
   }
 });
 
-app.get("/api/export.csv", (_req, res) => {
+app.get("/api/export.csv", (req, res) => {
   try {
     const result = syncCsv();
-    const file = result.latestPath || getMeta("last_csv_path");
+    const source = String(req.query?.source || "").toLowerCase().trim();
+    let file = result.latestPath || getMeta("last_csv_path");
+    let filename = "jobs_latest.csv";
+    if (source) {
+      const part = result.bySource?.[source];
+      if (!part?.path || !fs.existsSync(part.path)) {
+        res.status(404).send(`No CSV for source "${source}" yet.`);
+        return;
+      }
+      file = part.path;
+      filename = `${source}_jobs_latest.csv`;
+    }
     if (!file || !fs.existsSync(file)) {
       res.status(404).send("No CSV yet. Run a capture first.");
       return;
@@ -181,7 +192,7 @@ app.get("/api/export.csv", (_req, res) => {
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader(
       "Content-Disposition",
-      'attachment; filename="jobs_latest.csv"'
+      `attachment; filename="${filename}"`
     );
     fs.createReadStream(file).pipe(res);
   } catch (err) {

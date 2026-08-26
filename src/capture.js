@@ -310,6 +310,13 @@ export async function runCapture({ skipSlack = false } = {}) {
     console.log(
       `[capture] csv=${csvOut.csvPath} (rows=${csvOut.count})`
     );
+    const parts = Object.entries(csvOut.bySource || {})
+      .filter(([, v]) => v.count > 0)
+      .map(([src, v]) => `${src}=${v.count}`)
+      .join(", ");
+    if (parts) {
+      console.log(`[capture] per-source csv: ${parts}`);
+    }
 
     if (!skipSlack) {
       try {
