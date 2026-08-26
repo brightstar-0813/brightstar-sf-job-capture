@@ -5,6 +5,7 @@
 import express from "express";
 import cron from "node-cron";
 import fs from "fs";
+import path from "path";
 import { config } from "./config.js";
 import { runCapture, isCaptureRunning } from "./capture.js";
 import { ingestJobsPayload } from "./ingest.js";
@@ -183,7 +184,7 @@ app.get("/api/export.csv", (req, res) => {
         return;
       }
       file = part.path;
-      filename = `${source}_jobs_latest.csv`;
+      filename = path.basename(part.path);
     }
     if (!file || !fs.existsSync(file)) {
       res.status(404).send("No CSV yet. Run a capture first.");

@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { config, CSV_HEADERS, SOURCE_IDS, SOURCE_PRIORITY } from "./config.js";
+import { config, CSV_HEADERS, SOURCE_IDS, SOURCE_PRIORITY, CSV_EXPORT_ORDER } from "./config.js";
 import { writeCsv } from "./csv.js";
 import {
   matchesCaptureRule,
@@ -103,12 +103,49 @@ function csvSourceSlug(source) {
     .replace(/^_+|_+$/g, "") || "other";
 }
 
+/** 1-based export sequence for a source (0 = unknown / after known list). */
+export function csvExportIndex(source) {
+  const slug = csvSourceSlug(source);
+  const idx = CSV_EXPORT_ORDER.indexOf(slug);
+  return idx === -1 ? CSV_EXPORT_ORDER.length + 1 : idx + 1;
+}
+
 /**
- * Path for a per-source latest CSV, e.g. download/dice_jobs_latest.csv
+ * Path for a numbered per-source latest CSV, e.g. download/05_dice_jobs_latest.csv
  * @param {string} source
  */
 export function csvPathForSource(source) {
-  return path.join(config.dataDir, `${csvSourceSlug(source)}_jobs_latest.csv`);
+  const slug = csvSourceSlug(source);
+  const n = String(csvExportIndex(slug)).padStart(2, "0");
+  return path.join(config.dataDir, `${n}_${slug}_jobs_latest.csv`);
+}
+
+/** Remove legacy unnumbered `*_jobs_latest.csv` so only sequenced files remain. */
+function cleanupLegacySourceCsvs(keepPaths) {
+  const keep = new Set(
+    [...keepPaths, config.csvLatestPath].map((p) => path.resolve(String(p || "")))
+  );
+  let dir;
+  try {
+    dir = fs.readdirSync(config.dataDir);
+  } catch {
+    return;
+  }
+  for (const name of dir) {
+    if (!/_jobs_latest\.csv$/i.test(name)) continue;
+    if (/^\d{2}_/.test(name)) continue; // already numbered
+    const full = path.resolve(config.dataDir, name);
+    if (keep.has(full)) continue;
+    try {
+      fs.unlinkSync(full);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function withSeq(rows) {
+  return (rows || []).map((row, i) => ({ ...row, seq: i + 1 }));
 }
 
 /**
@@ -539,10 +576,10 @@ export function repairJobrightUrls() {
 
 /**
  * Write combined + per-source CSVs with the latest qualifying jobs.
- * - `jobs_latest.csv` — all sources
- * - `{source}_jobs_latest.csv` — one file per capture source (dice, jobright, …)
- * - `workday_jobs_latest.csv` — jobs whose apply URL is Workday (any source)
- * @returns {{ csvPath: string, latestPath: string, count: number, bySource: Record<string, { path: string, count: number }> }}
+ * - `jobs_latest.csv` — all sources (rows numbered via `seq`)
+ * - `NN_{source}_jobs_latest.csv` — one numbered file per source
+ * - `NN_workday_jobs_latest.csv` — Workday apply URLs (any source)
+ * @returns {{ csvPath: string, latestPath: string, count: number, bySource: Record<string, { path: string, count: number, seq: number }> }}
  */
 function csvSourceRank(job) {
   return sourcePriorityRank(job);
@@ -599,7 +636,7 @@ export function syncCsv(rows = null) {
   );
 
   const latestPath = config.csvLatestPath;
-  writeCsv(latestPath, clean);
+  writeCsv(latestPath, withSeq(clean));
 
   const bySource = {};
   const buckets = new Map();
@@ -609,13 +646,22 @@ export function syncCsv(rows = null) {
     buckets.get(src).push(job);
   }
 
-  // Always refresh known sources (empty file when none) so stale CSVs don't linger.
-  const sourcesToWrite = new Set([...SOURCE_IDS, ...buckets.keys()]);
+  const writtenPaths = [];
+  const sourcesToWrite = [
+    ...CSV_EXPORT_ORDER,
+    ...[...buckets.keys()].filter((s) => !CSV_EXPORT_ORDER.includes(s)),
+  ];
   for (const src of sourcesToWrite) {
+    if (src === "workday") continue; // written below from URL view
     const list = sortJobsForCsv(buckets.get(src) || [], now);
     const filePath = csvPathForSource(src);
-    writeCsv(filePath, list);
-    bySource[src] = { path: filePath, count: list.length };
+    writeCsv(filePath, withSeq(list));
+    writtenPaths.push(filePath);
+    bySource[src] = {
+      path: filePath,
+      count: list.length,
+      seq: csvExportIndex(src),
+    };
   }
 
   // Workday apply URLs (usually via JobRight / aggregators) — extra board view.
@@ -624,8 +670,15 @@ export function syncCsv(rows = null) {
     now
   );
   const workdayPath = csvPathForSource("workday");
-  writeCsv(workdayPath, workdayJobs);
-  bySource.workday = { path: workdayPath, count: workdayJobs.length };
+  writeCsv(workdayPath, withSeq(workdayJobs));
+  writtenPaths.push(workdayPath);
+  bySource.workday = {
+    path: workdayPath,
+    count: workdayJobs.length,
+    seq: csvExportIndex("workday"),
+  };
+
+  cleanupLegacySourceCsvs(writtenPaths);
 
   setMeta("last_csv_path", latestPath);
   setMeta("last_csv_latest_path", latestPath);

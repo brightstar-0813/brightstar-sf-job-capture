@@ -390,7 +390,34 @@ export const SOURCE_PRIORITY = [
 /** CSV row order for older jobs — mirrors SOURCE_PRIORITY. */
 export const CSV_SOURCE_ORDER = [...SOURCE_PRIORITY];
 
+/**
+ * Filename sequence for per-source CSVs (`01_greenhouse_…`, `02_lever_…`).
+ * Workday is a URL-board view (not a capture source) so it sits with company ATS.
+ */
+export const CSV_EXPORT_ORDER = [
+  "greenhouse",
+  "lever",
+  "ashby",
+  "workday",
+  "dice",
+  "builtin",
+  "jobgether",
+  "himalayas",
+  "jobright",
+  "remotive",
+  "jobicy",
+  "remoteok",
+  "wwr",
+  "arbeitnow",
+  "googlejobs",
+  "ziprecruiter",
+  "monster",
+  "indeed",
+  "careerbuilder",
+];
+
 export const CSV_HEADERS = [
+  "seq",
   "id",
   "title",
   "organization",
