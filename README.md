@@ -6,7 +6,7 @@ Capture **remote Salesforce-ecosystem** jobs from **public APIs first** (Greenho
 
 Each run overwrites **one** combined CSV with the latest qualifying jobs from all sources:
 
-- `download/jobs_latest.csv` — all sources together (`source` column marks Dice / JobRight / Built In / …). Rows posted in the last **24 hours** are sorted to the top (newest first); then by preferred source. Each row has a `seq` number (1…n).
+- `download/jobs_latest.csv` — all sources together (`source` column marks Dice / JobRight / Built In / …). Sorted by **posting date, newest first** (`date_posted`); jobs without a date appear at the bottom. Each row has a `seq` number (1…n).
 - `download/NN_{source}_jobs_latest.csv` — **one numbered CSV per source** (e.g. `01_greenhouse_…`, `05_dice_…`, `09_jobright_…`) so files sort in a fixed sequence
 - `download/04_workday_jobs_latest.csv` — jobs whose apply URL is Workday (often from JobRight), any capture source
 - `download/store.json` — shared dedupe history

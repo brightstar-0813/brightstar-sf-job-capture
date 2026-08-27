@@ -585,31 +585,30 @@ function csvSourceRank(job) {
   return sourcePriorityRank(job);
 }
 
-/** Prefer absolute posted date; fall back to first/last seen for sorting. */
-function jobPostedAtMs(job) {
-  const posted = parsePostedDate(job?.date_posted);
-  if (posted) return posted.getTime();
-  const seen = Date.parse(job?.first_seen_at || job?.last_seen_at || "");
-  return Number.isFinite(seen) ? seen : 0;
-}
-
-function isPostedWithinHours(job, hours, now = new Date()) {
+/** Posted date in ms for CSV sort; 0 when date_posted is missing/unparseable. */
+function jobPostedAtMs(job, now = new Date()) {
   const posted = parsePostedDate(job?.date_posted, now);
-  if (!posted) return false;
-  const ageMs = now.getTime() - posted.getTime();
-  if (ageMs < 0) return true;
-  return ageMs <= hours * 60 * 60 * 1000;
+  return posted ? posted.getTime() : 0;
 }
 
 function sortJobsForCsv(jobs, now = new Date()) {
   const list = [...(jobs || [])];
   list.sort((a, b) => {
-    const aFresh = isPostedWithinHours(a, 24, now) ? 0 : 1;
-    const bFresh = isPostedWithinHours(b, 24, now) ? 0 : 1;
-    if (aFresh !== bFresh) return aFresh - bFresh;
+    const aMs = jobPostedAtMs(a, now);
+    const bMs = jobPostedAtMs(b, now);
+    const aDated = aMs > 0;
+    const bDated = bMs > 0;
+    // Real posting dates first; undated rows sink to the bottom.
+    if (aDated !== bDated) return aDated ? -1 : 1;
+    if (bMs !== aMs) return bMs - aMs;
 
-    const byPosted = jobPostedAtMs(b) - jobPostedAtMs(a);
-    if (byPosted !== 0) return byPosted;
+    if (!aDated) {
+      const aSeen =
+        Date.parse(a?.last_seen_at || a?.first_seen_at || "") || 0;
+      const bSeen =
+        Date.parse(b?.last_seen_at || b?.first_seen_at || "") || 0;
+      if (bSeen !== aSeen) return bSeen - aSeen;
+    }
 
     const bySource = csvSourceRank(a) - csvSourceRank(b);
     if (bySource !== 0) return bySource;
