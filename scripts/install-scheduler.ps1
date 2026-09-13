@@ -32,7 +32,8 @@ $action = New-ScheduledTaskAction `
   -Argument "src\capture.js" `
   -WorkingDirectory $root
 
-# Fixed local times matching CRON_SCHEDULE=0 */8 * * * (12 AM, 8 AM, 4 PM)
+# Fixed local times matching CRON_SCHEDULE=0 */8 * * * (12 AM, 8 AM, 4 PM).
+# -Daily = every calendar day, including weekends (no weekday filter).
 $trigger0 = New-ScheduledTaskTrigger -Daily -At "12:00AM"
 $trigger8 = New-ScheduledTaskTrigger -Daily -At "8:00AM"
 $trigger16 = New-ScheduledTaskTrigger -Daily -At "4:00PM"
@@ -55,7 +56,7 @@ Register-ScheduledTask `
   -Trigger @($trigger0, $trigger8, $trigger16) `
   -Settings $settings `
   -Principal $principal `
-  -Description "Capture remote Salesforce jobs every 8 hours (12 AM, 8 AM, 4 PM local)" `
+  -Description "Capture remote Salesforce jobs every 8 hours every day including weekends (12 AM, 8 AM, 4 PM local)" `
   -Force | Out-Null
 
 foreach ($legacyTaskName in $legacyTaskNames) {
