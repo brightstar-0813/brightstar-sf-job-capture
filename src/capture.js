@@ -2,8 +2,8 @@
  * Capture Salesforce jobs — public APIs/feeds first (Greenhouse, Lever, Ashby,
  * Remotive, Jobicy, Remote OK, WWR, Working Nomads, Himalayas, Jobgether,
  * Arbeitnow, The Muse, USAJOBS, Adzuna),
- * plus Dice, JobRight, Built In. ZipRecruiter / Monster / CareerBuilder / Indeed
- * are off by default. Optional Google Jobs via SerpAPI.
+ * plus Dice, JobRight, Built In. ZipRecruiter / Monster / CareerBuilder are on
+ * when CAPTURE_*=true (Indeed stays off by default). Optional Google Jobs via SerpAPI.
  */
 
 import { chromium } from "playwright";

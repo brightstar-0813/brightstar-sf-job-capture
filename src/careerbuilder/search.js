@@ -1,6 +1,7 @@
 /**
  * CareerBuilder — best-effort remote Salesforce scrape.
  * Often empty or bot-blocked in headless; skip cleanly then.
+ * Searches SEARCH_QUERIES (capped) for broader Salesforce-ecosystem coverage.
  */
 
 import { config } from "../config.js";
@@ -14,6 +15,8 @@ import {
   looksSalesforceTitle,
   parsePostedDate,
 } from "../filter.js";
+
+const MAX_QUERIES = 8;
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -50,7 +53,7 @@ export async function searchCareerbuilderJobs(browser) {
   const page = await context.newPage();
   const kept = [];
   const seen = new Set();
-  const queries = (config.searchQueries || [config.searchQ]).slice(0, 3);
+  const queries = (config.searchQueries || [config.searchQ]).slice(0, MAX_QUERIES);
 
   try {
     for (const q of queries) {
@@ -67,7 +70,7 @@ export async function searchCareerbuilderJobs(browser) {
         console.warn(
           `[careerbuilder] blocked or empty page — skipping this run`
         );
-        return { jobs: [], blocked: true };
+        return { jobs: kept, blocked: true };
       }
 
       const stubs = await page.evaluate(() => {

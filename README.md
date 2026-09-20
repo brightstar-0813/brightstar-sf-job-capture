@@ -1,6 +1,6 @@
 # Salesforce Job Capture (multi-source)
 
-Capture **remote Salesforce-ecosystem** jobs from **public APIs first** (Greenhouse / Lever / Ashby boards, Remotive, Jobicy, Remote OK, We Work Remotely, Working Nomads, Himalayas, Jobgether, Arbeitnow, The Muse, USAJOBS, Adzuna), plus Dice, JobRight, Built In, and optional Google Jobs (SerpAPI) **every 8 hours**. Flaky Playwright boards (ZipRecruiter / Monster / CareerBuilder / Indeed) are **off by default**.
+Capture **remote Salesforce-ecosystem** jobs from **public APIs first** (Greenhouse / Lever / Ashby boards, Remotive, Jobicy, Remote OK, We Work Remotely, Working Nomads, Himalayas, Jobgether, Arbeitnow, The Muse, USAJOBS, Adzuna), plus Dice, JobRight, Built In, and optional Google Jobs (SerpAPI) **every 8 hours**. Playwright boards **ZipRecruiter / Monster / CareerBuilder** are **on** (may no-op when Cloudflare blocks); **Indeed** stays **off by default**.
 
 ## What gets saved
 
@@ -32,7 +32,8 @@ Filter (applied to all sources):
 | **Himalayas / Jobgether / Arbeitnow** | Scheduler (public JSON APIs) | No browser. Jobgether’s offer API; Himalayas remote search. Arbeitnow is EU-heavy so few US hits. |
 | **USAJOBS / Adzuna** | Scheduler (public APIs, optional keys) | Federal remote roles (USAJOBS) and US aggregator (Adzuna). Free keys at [developer.usajobs.gov](https://developer.usajobs.gov) and [developer.adzuna.com](https://developer.adzuna.com). Skipped until keys are set. |
 | **Google Jobs** | Scheduler (SerpAPI, optional) | Google has no free Jobs API. Set `SERPAPI_KEY` to enable. |
-| **ZipRecruiter / Monster / CareerBuilder / Indeed** | Scheduler (Playwright) | **Off by default** — often Cloudflare/bot-blocked. Enable via `CAPTURE_*=true` if needed. |
+| **ZipRecruiter / Monster / CareerBuilder** | Scheduler (Playwright) | **On** (`CAPTURE_*=true`) — search `SEARCH_QUERIES`; may return empty if Cloudflare blocks. |
+| **Indeed** | Scheduler (Playwright) | **Off by default** — set `CAPTURE_INDEED=true` and run `npm run indeed:login` if needed. |
 
 ### Optional: skip already-applied Dice jobs
 
