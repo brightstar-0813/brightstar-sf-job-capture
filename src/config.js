@@ -389,17 +389,16 @@ export function pagesForSearchQuery(index) {
 
 /** Known capture source ids (used for status counts). */
 export const SOURCE_IDS = [
-  "dice",
-  "jobright",
   "builtin",
+  "himalayas",
   "greenhouse",
+  "dice",
   "lever",
   "ashby",
   "remotive",
   "jobicy",
   "remoteok",
   "wwr",
-  "himalayas",
   "jobgether",
   "arbeitnow",
   "themuse",
@@ -411,27 +410,28 @@ export const SOURCE_IDS = [
   "monster",
   "indeed",
   "careerbuilder",
+  "jobright",
 ];
 
 /**
- * Preferred posting when the same role appears on several boards
- * (Salesforce priority: company careers → Indeed → Dice → Zip → …).
+ * Preferred posting when the same role appears on several boards.
+ * Hands-on apply yield: Built In → Himalayas → Greenhouse → Dice → others.
  * LinkedIn URLs are excluded (not scraped; not preferred from other boards).
  * Lower index = higher priority.
  */
 export const SOURCE_PRIORITY = [
+  "builtin",
+  "himalayas",
   "greenhouse",
+  "dice",
   "lever",
   "ashby",
   "indeed",
-  "dice",
   "ziprecruiter",
   "glassdoor",
-  "builtin",
   "careerbuilder",
   "monster",
   "jobgether",
-  "himalayas",
   "themuse",
   "remotive",
   "jobicy",
@@ -449,18 +449,18 @@ export const SOURCE_PRIORITY = [
 export const CSV_SOURCE_ORDER = [...SOURCE_PRIORITY];
 
 /**
- * Filename sequence for per-source CSVs (`01_greenhouse_…`, `02_lever_…`).
- * Workday is a URL-board view (not a capture source) so it sits with company ATS.
+ * Filename sequence for per-source CSVs (`01_builtin_…`, `02_himalayas_…`).
+ * Workday is a URL-board view (not a capture source) — after Greenhouse ATS.
  */
 export const CSV_EXPORT_ORDER = [
+  "builtin",
+  "himalayas",
   "greenhouse",
+  "dice",
   "lever",
   "ashby",
   "workday",
-  "dice",
-  "builtin",
   "jobgether",
-  "himalayas",
   "themuse",
   "jobright",
   "remotive",

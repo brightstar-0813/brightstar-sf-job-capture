@@ -6,12 +6,12 @@ Capture **remote Salesforce-ecosystem** jobs from **public APIs first** (Greenho
 
 Each run overwrites **one** combined CSV with the latest qualifying jobs from all sources:
 
-- `download/jobs_latest.csv` — all sources together (`source` column marks Dice / JobRight / Built In / …). Sorted by **posting date, newest first** (`date_posted`); jobs without a date appear at the bottom. Each row has a `seq` number (1…n).
-- `download/NN_{source}_jobs_latest.csv` — **one numbered CSV per source** (e.g. `01_greenhouse_…`, `05_dice_…`, `09_jobright_…`) so files sort in a fixed sequence
-- `download/04_workday_jobs_latest.csv` — jobs whose apply URL is Workday (often from JobRight), any capture source
+- `download/jobs_latest.csv` — all sources together (`source` column marks Dice / JobRight / Built In / …). Sorted by **source priority**, then **posting date newest first** within each site; jobs without a date appear at the bottom of that site. Each row has a `seq` number (1…n).
+- `download/NN_{source}_jobs_latest.csv` — **one numbered CSV per source** (e.g. `01_builtin_…`, `02_himalayas_…`, `03_greenhouse_…`, `04_dice_…`) so files sort in apply-yield order; each file is newest-first
+- `download/07_workday_jobs_latest.csv` — jobs whose apply URL is Workday (often from JobRight), any capture source
 - `download/store.json` — shared dedupe history
 
-**Source priority (same title+company):** Greenhouse/Lever/Ashby → Indeed → Dice → ZipRecruiter → Glassdoor → Built In → other aggregators → JobRight. **LinkedIn is not scraped.** JobRight listings whose apply/original URL is LinkedIn are **skipped** (not kept with a JobRight page URL either). LinkedIn URLs from any board are excluded from the store/CSV. JobRight apply URLs keep required query params (Indeed `jk=`, Greenhouse `token`/`gh_jid`); incomplete ATS shells fall back to the JobRight job page; Lever `…/apply` is stored as the posting page. JDs are built from JobRight summary + responsibilities + qualifications.
+**Source priority (fetch, CSV order, same title+company):** Built In → Himalayas → Greenhouse → Dice → Lever/Ashby → other boards → JobRight. **LinkedIn is not scraped.** JobRight listings whose apply/original URL is LinkedIn are **skipped** (not kept with a JobRight page URL either). LinkedIn URLs from any board are excluded from the store/CSV. JobRight apply URLs keep required query params (Indeed `jk=`, Greenhouse `token`/`gh_jid`); incomplete ATS shells fall back to the JobRight job page; Lever `…/apply` is stored as the posting page. JDs are built from JobRight summary + responsibilities + qualifications.
 
 Filter (applied to all sources):
 

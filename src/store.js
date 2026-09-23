@@ -149,7 +149,7 @@ function withSeq(rows) {
 }
 
 /**
- * Lower = better. Company ATS → Indeed → Dice → Zip → … → JobRight.
+ * Lower = better. Built In → Himalayas → Greenhouse → Dice → … → JobRight.
  * LinkedIn URLs are excluded by the capture rule (not ranked).
  */
 export function sourcePriorityRank(job) {
@@ -594,11 +594,15 @@ function jobPostedAtMs(job, now = new Date()) {
 function sortJobsForCsv(jobs, now = new Date()) {
   const list = [...(jobs || [])];
   list.sort((a, b) => {
+    // Site priority first (Built In → Himalayas → Greenhouse → Dice → …),
+    // then newest posting date within each site; undated rows sink.
+    const bySource = csvSourceRank(a) - csvSourceRank(b);
+    if (bySource !== 0) return bySource;
+
     const aMs = jobPostedAtMs(a, now);
     const bMs = jobPostedAtMs(b, now);
     const aDated = aMs > 0;
     const bDated = bMs > 0;
-    // Real posting dates first; undated rows sink to the bottom.
     if (aDated !== bDated) return aDated ? -1 : 1;
     if (bMs !== aMs) return bMs - aMs;
 
@@ -609,9 +613,6 @@ function sortJobsForCsv(jobs, now = new Date()) {
         Date.parse(b?.last_seen_at || b?.first_seen_at || "") || 0;
       if (bSeen !== aSeen) return bSeen - aSeen;
     }
-
-    const bySource = csvSourceRank(a) - csvSourceRank(b);
-    if (bySource !== 0) return bySource;
 
     return String(b.last_seen_at || "").localeCompare(
       String(a.last_seen_at || "")

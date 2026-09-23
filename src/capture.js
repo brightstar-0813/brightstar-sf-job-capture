@@ -86,18 +86,18 @@ function ingestJobs(jobs, runId, counts, newJobs) {
 }
 
 function enabledSources() {
+  // Status/log order mirrors apply yield: Built In → Himalayas → Greenhouse → Dice → …
   const out = [];
-  if (config.captureDice) out.push("dice");
-  if (config.captureJobright) out.push("jobright");
   if (config.captureBuiltin) out.push("builtin");
+  if (config.captureHimalayas) out.push("himalayas");
   if (config.captureGreenhouse) out.push("greenhouse");
+  if (config.captureDice) out.push("dice");
   if (config.captureLever) out.push("lever");
   if (config.captureAshby) out.push("ashby");
   if (config.captureRemotive) out.push("remotive");
   if (config.captureJobicy) out.push("jobicy");
   if (config.captureRemoteok) out.push("remoteok");
   if (config.captureWwr) out.push("wwr");
-  if (config.captureHimalayas) out.push("himalayas");
   if (config.captureJobgether) out.push("jobgether");
   if (config.captureArbeitnow) out.push("arbeitnow");
   if (config.captureThemuse) out.push("themuse");
@@ -109,6 +109,7 @@ function enabledSources() {
   if (config.captureMonster) out.push("monster");
   if (config.captureIndeed) out.push("indeed");
   if (config.captureCareerbuilder) out.push("careerbuilder");
+  if (config.captureJobright) out.push("jobright");
   return out;
 }
 
@@ -122,7 +123,9 @@ async function runNamedSource(name, fn) {
 }
 
 async function collectFeedJobs() {
+  // Himalayas + Greenhouse first among feeds (highest apply yield after Built In).
   const runners = [];
+  if (config.captureHimalayas) runners.push(["himalayas", searchHimalayasJobs]);
   if (config.captureGreenhouse) runners.push(["greenhouse", searchGreenhouseJobs]);
   if (config.captureLever) runners.push(["lever", searchLeverJobs]);
   if (config.captureAshby) runners.push(["ashby", searchAshbyJobs]);
@@ -130,7 +133,6 @@ async function collectFeedJobs() {
   if (config.captureJobicy) runners.push(["jobicy", searchJobicyJobs]);
   if (config.captureRemoteok) runners.push(["remoteok", searchRemoteokJobs]);
   if (config.captureWwr) runners.push(["wwr", searchWwrJobs]);
-  if (config.captureHimalayas) runners.push(["himalayas", searchHimalayasJobs]);
   if (config.captureJobgether) runners.push(["jobgether", searchJobgetherJobs]);
   if (config.captureArbeitnow) runners.push(["arbeitnow", searchArbeitnowJobs]);
   if (config.captureThemuse) runners.push(["themuse", searchThemuseJobs]);
@@ -184,6 +186,15 @@ export async function runCapture({ skipSlack = false } = {}) {
 
     browser = await chromium.launch(browserLaunchOptions(config.headless));
 
+    // Built In before Dice (highest Playwright yield).
+    if (config.captureBuiltin) {
+      await runNamedSource("builtin", async () => {
+        const { jobs } = await searchBuiltinJobs(browser);
+        console.log(`[capture] builtin jobs: ${jobs.length}`);
+        ingestJobs(jobs, runId, counts, newJobs);
+      });
+    }
+
     if (config.captureDice) {
       await runNamedSource("dice", async () => {
         const { jobs: stubs, appliedIds: diceApplied, unauthenticated } =
@@ -209,14 +220,6 @@ export async function runCapture({ skipSlack = false } = {}) {
             );
           }
         }
-      });
-    }
-
-    if (config.captureBuiltin) {
-      await runNamedSource("builtin", async () => {
-        const { jobs } = await searchBuiltinJobs(browser);
-        console.log(`[capture] builtin jobs: ${jobs.length}`);
-        ingestJobs(jobs, runId, counts, newJobs);
       });
     }
 
@@ -265,7 +268,7 @@ export async function runCapture({ skipSlack = false } = {}) {
       ingestJobs(feedJobs, runId, counts, newJobs);
     }
 
-    // JobRight last among browser sources (CSV still puts <24h posts first overall).
+    // JobRight last among browser sources (lowest source priority).
     if (config.captureJobright) {
       await runNamedSource("jobright", async () => {
         const { jobs: jrJobs, auth, appliedIds } = await searchJobrightJobs(browser);
