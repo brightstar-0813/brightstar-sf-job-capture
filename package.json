@@ -1,7 +1,7 @@
 {
   "name": "dice-job-capture",
   "version": "1.0.0",
-  "description": "Capture Salesforce jobs from Dice every 8 hours — CSV + Slack + Chrome extension",
+  "description": "Capture Salesforce jobs from Dice every 6 hours — CSV + Slack + Chrome extension",
   "type": "module",
   "main": "src/capture.js",
   "scripts": {

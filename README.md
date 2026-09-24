@@ -1,6 +1,6 @@
 # Salesforce Job Capture (multi-source)
 
-Capture **remote Salesforce-ecosystem** jobs from **public APIs first** (Greenhouse / Lever / Ashby boards, Remotive, Jobicy, Remote OK, We Work Remotely, Working Nomads, Himalayas, Jobgether, Arbeitnow, The Muse, USAJOBS, Adzuna), plus Dice, JobRight, Built In, and optional Google Jobs (SerpAPI) **every 8 hours**. Playwright boards **ZipRecruiter / Monster / CareerBuilder** are **on** (may no-op when Cloudflare blocks); **Indeed** stays **off by default**.
+Capture **remote Salesforce-ecosystem** jobs from **public APIs first** (Greenhouse / Lever / Ashby boards, Remotive, Jobicy, Remote OK, We Work Remotely, Working Nomads, Himalayas, Jobgether, Arbeitnow, The Muse, USAJOBS, Adzuna), plus Dice, JobRight, Built In, and optional Google Jobs (SerpAPI) **every 6 hours**. Playwright boards **ZipRecruiter / Monster / CareerBuilder** are **on** (may no-op when Cloudflare blocks); **Indeed** stays **off by default**.
 
 ## What gets saved
 
@@ -71,7 +71,7 @@ The extension can still post JobRight jobs using your Chrome cookies if you pref
 
 Export CSV from `download/jobs_latest.csv`, numbered per-source files like `download/05_dice_jobs_latest.csv`, or `http://127.0.0.1:3847/api/export.csv` (optional `?source=dice`). Full multi-board capture still runs from Task Scheduler / `npm run capture`.
 
-## Fully automatic — every 8 hours (Windows)
+## Fully automatic — every 6 hours (Windows)
 
 Install **both** scheduled tasks (Dice capture + API at logon):
 
@@ -81,7 +81,7 @@ npm run schedule:install
 
 | Task | What it does |
 |------|----------------|
-| `DiceJobCapture_Every8Hours` | Runs capture every **8 hours** (12 AM, 8 AM, 4 PM local) |
+| `DiceJobCapture_Every6Hours` | Runs capture every **6 hours** (12 AM, 6 AM, 12 PM, 6 PM local) |
 | `DiceJobCapture_API_AtLogon` | Starts `node src/server.js` when you log in (local API + cron) |
 
 You do **not** need to open Cursor or type `npm start` after that — run `npm run jobright:login` once for JobRight. Chrome extension is optional.
@@ -89,9 +89,9 @@ You do **not** need to open Cursor or type `npm start` after that — run `npm r
 Optional checks:
 
 ```powershell
-Get-ScheduledTask -TaskName DiceJobCapture_Every8Hours, DiceJobCapture_API_AtLogon
+Get-ScheduledTask -TaskName DiceJobCapture_Every6Hours, DiceJobCapture_API_AtLogon
 Start-ScheduledTask -TaskName DiceJobCapture_API_AtLogon
-Start-ScheduledTask -TaskName DiceJobCapture_Every8Hours
+Start-ScheduledTask -TaskName DiceJobCapture_Every6Hours
 ```
 
 Individual installs: `npm run schedule:dice` or `npm run schedule:api`.
@@ -137,7 +137,7 @@ Then load `extension/` unpacked in Chrome.
 | `CSV_PREFIX_DICE` / `CSV_PREFIX_JOBRIGHT` | Dated filename prefixes (legacy) |
 | Per-source latest CSVs | `download/NN_{source}_jobs_latest.csv` (fixed sequence) plus Workday URL view; each file has a `seq` column |
 | `DATA_DIR` | Output folder (`download`) |
-| `CRON_SCHEDULE` | Used by `npm start` only (default `0 */8 * * *` = every 8 hours) |
+| `CRON_SCHEDULE` | Used by `npm start` only (default `0 */6 * * *` = 12 AM, 6 AM, 12 PM, 6 PM) |
 
 ## Notes
 

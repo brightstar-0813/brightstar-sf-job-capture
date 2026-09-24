@@ -57,8 +57,8 @@ export const config = {
   pageSize: Math.max(1, Math.min(100, Number(process.env.PAGE_SIZE || 50))),
   headless: bool("HEADLESS", true),
   delayMs: Math.max(0, Number(process.env.DELAY_MS || 800)),
-  /** node-cron expression for `npm start` (default: every 8 hours). */
-  cronSchedule: process.env.CRON_SCHEDULE || "0 */8 * * *",
+  /** node-cron expression for `npm start` (default: 12 AM, 6 AM, 12 PM, 6 PM). */
+  cronSchedule: process.env.CRON_SCHEDULE || "0 */6 * * *",
   apiBase: `http://127.0.0.1:${Number(process.env.PORT || 3847)}`,
   captureDice: bool("CAPTURE_DICE", true),
   captureJobright: bool("CAPTURE_JOBRIGHT", true),
