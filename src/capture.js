@@ -1,6 +1,7 @@
 /**
  * Capture Salesforce jobs — public APIs/feeds first (Greenhouse, Lever, Ashby,
- * Remotive, Jobicy, Remote OK, WWR, Working Nomads, Himalayas, Jobgether,
+ * Remotive, Jobicy, Remote OK, WWR, Working Nomads, Jobspresso, SkipTheDrive,
+ * Arc.dev, Himalayas, Jobgether,
  * Arbeitnow, The Muse, USAJOBS, Adzuna),
  * plus Dice, JobRight, Built In. ZipRecruiter / Monster / CareerBuilder are on
  * when CAPTURE_*=true (Indeed stays off by default). Optional Google Jobs via SerpAPI.
@@ -29,6 +30,9 @@ import { searchJobgetherJobs } from "./jobgether/search.js";
 import { searchArbeitnowJobs } from "./arbeitnow/search.js";
 import { searchThemuseJobs } from "./themuse/search.js";
 import { searchWorkingnomadsJobs } from "./workingnomads/search.js";
+import { searchJobspressoJobs } from "./jobspresso/search.js";
+import { searchSkipthedriveJobs } from "./skipthedrive/search.js";
+import { searchArcJobs } from "./arc/search.js";
 import { searchUsajobsJobs } from "./usajobs/search.js";
 import { searchAdzunaJobs } from "./adzuna/search.js";
 import { searchGoogleJobs } from "./googlejobs/search.js";
@@ -102,6 +106,9 @@ function enabledSources() {
   if (config.captureArbeitnow) out.push("arbeitnow");
   if (config.captureThemuse) out.push("themuse");
   if (config.captureWorkingnomads) out.push("workingnomads");
+  if (config.captureJobspresso) out.push("jobspresso");
+  if (config.captureSkipthedrive) out.push("skipthedrive");
+  if (config.captureArc) out.push("arc");
   if (config.captureUsajobs) out.push("usajobs");
   if (config.captureAdzuna) out.push("adzuna");
   if (config.captureGooglejobs) out.push("googlejobs");
@@ -138,6 +145,10 @@ async function collectFeedJobs() {
   if (config.captureThemuse) runners.push(["themuse", searchThemuseJobs]);
   if (config.captureWorkingnomads)
     runners.push(["workingnomads", searchWorkingnomadsJobs]);
+  if (config.captureJobspresso) runners.push(["jobspresso", searchJobspressoJobs]);
+  if (config.captureSkipthedrive)
+    runners.push(["skipthedrive", searchSkipthedriveJobs]);
+  if (config.captureArc) runners.push(["arc", searchArcJobs]);
   if (config.captureUsajobs) runners.push(["usajobs", searchUsajobsJobs]);
   if (config.captureAdzuna) runners.push(["adzuna", searchAdzunaJobs]);
   if (config.captureGooglejobs) runners.push(["googlejobs", searchGoogleJobs]);

@@ -28,7 +28,7 @@ Filter (applied to all sources):
 | **JobRight** | Scheduler + `/swan` API (saved login) | `npm run jobright:login` once — **no Chrome extension or JobRight UI tabs** during capture |
 | **Built In** | Scheduler (Playwright) | Remote + keyword search; skips listings whose titles aren't Salesforce-related |
 | **Greenhouse / Lever / Ashby** | Scheduler (public company-board APIs) | Direct from employer career sites — Salesforce ISVs, partners, and companies that hire SF admins/devs (`GREENHOUSE_BOARDS`, `LEVER_BOARDS`, `ASHBY_BOARDS`) |
-| **Remotive / Jobicy / Remote OK / We Work Remotely / Working Nomads / The Muse** | Scheduler (public JSON/RSS) | No browser; not Cloudflare-gated — extra recent remote listings |
+| **Remotive / Jobicy / Remote OK / We Work Remotely / Working Nomads / The Muse / Jobspresso / SkipTheDrive / Arc.dev** | Scheduler (public JSON, RSS, or listing pages) | No browser. Jobspresso, SkipTheDrive, and Arc.dev have no API; the bot reads their public search pages |
 | **Himalayas / Jobgether / Arbeitnow** | Scheduler (public JSON APIs) | No browser. Jobgether’s offer API; Himalayas remote search. Arbeitnow is EU-heavy so few US hits. |
 | **USAJOBS / Adzuna** | Scheduler (public APIs, optional keys) | Federal remote roles (USAJOBS) and US aggregator (Adzuna). Free keys at [developer.usajobs.gov](https://developer.usajobs.gov) and [developer.adzuna.com](https://developer.adzuna.com). Skipped until keys are set. |
 | **Google Jobs** | Scheduler (SerpAPI, optional) | Google has no free Jobs API. Set `SERPAPI_KEY` to enable. |

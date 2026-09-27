@@ -83,6 +83,10 @@ export const config = {
   captureThemuse: bool("CAPTURE_THEMUSE", true),
   /** Working Nomads public JSON feed — no key. */
   captureWorkingnomads: bool("CAPTURE_WORKINGNOMADS", true),
+  /** Public listing pages (no API): Jobspresso, SkipTheDrive, Arc.dev. */
+  captureJobspresso: bool("CAPTURE_JOBSPRESSO", true),
+  captureSkipthedrive: bool("CAPTURE_SKIPTHEDRIVE", true),
+  captureArc: bool("CAPTURE_ARC", true),
   /** USAJOBS federal API — free key at developer.usajobs.gov. */
   captureUsajobs: bool("CAPTURE_USAJOBS", true),
   /** Adzuna aggregator — free tier at developer.adzuna.com. */
@@ -403,6 +407,9 @@ export const SOURCE_IDS = [
   "arbeitnow",
   "themuse",
   "workingnomads",
+  "jobspresso",
+  "skipthedrive",
+  "arc",
   "usajobs",
   "adzuna",
   "googlejobs",
@@ -438,6 +445,9 @@ export const SOURCE_PRIORITY = [
   "remoteok",
   "wwr",
   "workingnomads",
+  "jobspresso",
+  "skipthedrive",
+  "arc",
   "arbeitnow",
   "usajobs",
   "adzuna",
@@ -468,6 +478,9 @@ export const CSV_EXPORT_ORDER = [
   "remoteok",
   "wwr",
   "workingnomads",
+  "jobspresso",
+  "skipthedrive",
+  "arc",
   "arbeitnow",
   "usajobs",
   "adzuna",
