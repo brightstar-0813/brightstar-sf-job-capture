@@ -1,13 +1,13 @@
-# Register a Windows Scheduled Task to run capture every 6 hours (local time).
+# Register a Windows Scheduled Task to run capture at 5 AM and 5 PM (local time).
 #   npm run schedule:install
 # or:
 #   powershell -ExecutionPolicy Bypass -File scripts\install-scheduler.ps1
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
-$taskName = "DiceJobCapture_Every6Hours"
+$taskName = "DiceJobCapture_5am5pm"
 $legacyTaskNames = @(
-  "DiceJobCapture_5am5pm",
+  "DiceJobCapture_Every6Hours",
   "DiceJobCapture_Every12Hours",
   "DiceJobCapture_Every8Hours"
 )
@@ -33,12 +33,10 @@ $action = New-ScheduledTaskAction `
   -Argument "src\capture.js" `
   -WorkingDirectory $root
 
-# Fixed local times matching CRON_SCHEDULE=0 */6 * * * (12 AM, 6 AM, 12 PM, 6 PM).
+# Fixed local times matching CRON_SCHEDULE=0 5,17 * * * (5 AM, 5 PM).
 # -Daily = every calendar day, including weekends (no weekday filter).
-$trigger0 = New-ScheduledTaskTrigger -Daily -At "12:00AM"
-$trigger6 = New-ScheduledTaskTrigger -Daily -At "6:00AM"
-$trigger12 = New-ScheduledTaskTrigger -Daily -At "12:00PM"
-$trigger18 = New-ScheduledTaskTrigger -Daily -At "6:00PM"
+$trigger5am = New-ScheduledTaskTrigger -Daily -At "5:00AM"
+$trigger5pm = New-ScheduledTaskTrigger -Daily -At "5:00PM"
 
 $settings = New-ScheduledTaskSettingsSet `
   -AllowStartIfOnBatteries `
@@ -55,10 +53,10 @@ $principal = New-ScheduledTaskPrincipal `
 Register-ScheduledTask `
   -TaskName $taskName `
   -Action $action `
-  -Trigger @($trigger0, $trigger6, $trigger12, $trigger18) `
+  -Trigger @($trigger5am, $trigger5pm) `
   -Settings $settings `
   -Principal $principal `
-  -Description "Capture remote Salesforce jobs every 6 hours every day including weekends (12 AM, 6 AM, 12 PM, 6 PM local)" `
+  -Description "Capture remote Salesforce jobs at 5 AM and 5 PM every day including weekends (local)" `
   -Force | Out-Null
 
 foreach ($legacyTaskName in $legacyTaskNames) {
@@ -69,6 +67,6 @@ foreach ($legacyTaskName in $legacyTaskNames) {
   }
 }
 
-Write-Host "Scheduled task '$taskName' installed (every 6 hours: 12 AM, 6 AM, 12 PM, 6 PM local)."
+Write-Host "Scheduled task '$taskName' installed (5 AM and 5 PM local, every day)."
 Write-Host "Run now:  Start-ScheduledTask -TaskName '$taskName'"
 Write-Host "JobRight: use Chrome extension + API autostart (npm run schedule:api)"

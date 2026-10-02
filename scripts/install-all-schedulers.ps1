@@ -1,5 +1,5 @@
 # Install both:
-#  1) Capture every 6 hours (12 AM, 6 AM, 12 PM, 6 PM local)
+#  1) Capture at 5 AM and 5 PM local, every day
 #  2) Local API at Windows logon (for JobRight extension ingest)
 #
 #   npm run schedule:install
@@ -12,6 +12,6 @@ $here = $PSScriptRoot
 
 Write-Host ""
 Write-Host "All set:"
-Write-Host "  - DiceJobCapture_Every6Hours   (capture every 6 hours)"
+Write-Host "  - DiceJobCapture_5am5pm       (capture at 5 AM and 5 PM)"
 Write-Host "  - DiceJobCapture_API_AtLogon   (npm start equivalent at login)"
-Write-Host "Keep Chrome signed in to JobRight; extension runs every 6 hours while Chrome is open."
+Write-Host "Keep Chrome signed in to JobRight; extension runs at 5 AM and 5 PM while Chrome is open."

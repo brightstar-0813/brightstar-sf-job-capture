@@ -1,5 +1,5 @@
 /**
- * Local API + optional node-cron every 6 hours (CRON_SCHEDULE).
+ * Local API + optional node-cron at 5 AM and 5 PM (CRON_SCHEDULE).
  */
 
 import express from "express";
@@ -210,7 +210,7 @@ app.get("/api/export.csv", (req, res) => {
 
 const server = app.listen(config.port, "127.0.0.1", () => {
   console.log(`[server] http://127.0.0.1:${config.port}`);
-  console.log(`[server] cron "${config.cronSchedule}" (every 6 hours by default)`);
+  console.log(`[server] cron "${config.cronSchedule}" (5 AM and 5 PM by default)`);
 });
 
 if (cron.validate(config.cronSchedule)) {
