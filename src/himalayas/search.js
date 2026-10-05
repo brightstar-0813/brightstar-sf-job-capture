@@ -85,6 +85,10 @@ export async function searchHimalayasJobs() {
         seen.add(job.id);
         scanned += 1;
         newOnPage += 1;
+        if (!String(job.location || "").trim()) {
+          counts.location += 1;
+          continue;
+        }
         if (keepFeedJob(job, counts)) kept.push(job);
       }
       if (newOnPage === 0) break;
