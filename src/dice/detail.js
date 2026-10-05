@@ -195,15 +195,30 @@ export async function scrapeJobDetail(page, url) {
  */
 export async function scrapeJobDetails(browser, stubs) {
   const context = await browser.newContext(contextOptions());
-  const page = await context.newPage();
+  let page = await context.newPage();
   const results = [];
+
+  async function replacePage() {
+    await page.close().catch(() => {});
+    page = await context.newPage();
+  }
 
   try {
     for (let i = 0; i < stubs.length; i += 1) {
       const stub = stubs[i];
       console.log(`[detail] ${i + 1}/${stubs.length}: ${stub.id}`);
       try {
-        const detail = await scrapeJobDetail(page, stub.url);
+        let detail;
+        try {
+          detail = await scrapeJobDetail(page, stub.url);
+        } catch (err) {
+          if (!/crashed|closed|Target closed/i.test(String(err && err.message))) {
+            throw err;
+          }
+          console.warn(`[detail] page crashed on ${stub.id}, retrying`);
+          await replacePage();
+          detail = await scrapeJobDetail(page, stub.url);
+        }
         if (detail.expired) {
           console.log(`[detail] skip ${stub.id}: job no longer available`);
           if (config.delayMs) await sleep(config.delayMs);
@@ -226,6 +241,9 @@ export async function scrapeJobDetails(browser, stubs) {
         });
       } catch (err) {
         console.warn(`[detail] failed ${stub.id}: ${err.message}`);
+        if (/crashed|closed|Target closed/i.test(String(err && err.message))) {
+          await replacePage().catch(() => {});
+        }
       }
       if (config.delayMs) await sleep(config.delayMs);
     }

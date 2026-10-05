@@ -172,7 +172,7 @@ export async function searchDiceJobs(browser) {
   }
   const hasDiceAuth = fs.existsSync(config.diceAuthPath);
   const context = await browser.newContext(contextOptions);
-  const page = await context.newPage();
+  let page = await context.newPage();
   const all = [];
   const seenIds = new Set();
   let appliedIds = new Set();
@@ -194,6 +194,23 @@ export async function searchDiceJobs(browser) {
           console.log(`[search] already-applied Dice jobs to exclude: ${appliedIds.size}`);
         }
       }
+      // The applied-jobs page can crash the renderer. Search on a new page.
+      await page.close().catch(() => {});
+      page = await context.newPage();
+    }
+
+    async function gotoSearch(url) {
+      try {
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+      } catch (err) {
+        if (!/crashed|closed|Target closed/i.test(String(err && err.message))) {
+          throw err;
+        }
+        console.warn(`[search] Dice page crashed, retrying on a new page`);
+        await page.close().catch(() => {});
+        page = await context.newPage();
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+      }
     }
 
     const queries =
@@ -208,7 +225,7 @@ export async function searchDiceJobs(browser) {
         for (let p = 1; p <= pages; p += 1) {
           const url = buildSearchUrl(p, query);
           console.log(`[search] q="${query}" page ${p}/${pages}: ${url}`);
-          await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+          await gotoSearch(url);
           // Wait for client-side results
           try {
             await page.waitForSelector(
@@ -245,6 +262,8 @@ export async function searchDiceJobs(browser) {
         console.warn(
           `[search] Dice query "${query}" failed (${err.message}) — keeping ${all.length} stubs so far`
         );
+        await page.close().catch(() => {});
+        page = await context.newPage().catch(() => page);
       }
     }
   } finally {

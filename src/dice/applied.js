@@ -35,17 +35,22 @@ export async function collectDiceAppliedIds(page) {
       break;
     }
 
-    // Load any lazy cards.
-    for (let i = 0; i < 5; i += 1) {
-      await page.mouse.wheel(0, 1600).catch(() => {});
-      await sleep(350);
-    }
+    // Load any lazy cards. A renderer crash must not throw away ids already found.
+    let links = [];
+    try {
+      for (let i = 0; i < 5; i += 1) {
+        await page.mouse.wheel(0, 1600).catch(() => {});
+        await sleep(350);
+      }
 
-    const links = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('a[href*="/job-detail/"]')).map(
-        (a) => (a.href || "").split("?")[0]
-      )
-    );
+      links = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('a[href*="/job-detail/"]')).map(
+          (a) => (a.href || "").split("?")[0]
+        )
+      );
+    } catch {
+      break;
+    }
 
     const before = ids.size;
     for (const link of links) {
