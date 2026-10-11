@@ -2,7 +2,7 @@
  * Built In — remote Salesforce jobs via search + detail scrape.
  */
 
-import { config, pagesForSearchQuery } from "../config.js";
+import { config } from "../config.js";
 import { contextOptions } from "../browser.js";
 import {
   containsSalesforce,
@@ -135,13 +135,11 @@ export async function searchBuiltinJobs(browser) {
 
   try {
     const queries =
-      config.searchQueries?.length > 0
-        ? config.searchQueries
-        : [config.searchQ];
+      config.roleTitles?.length > 0 ? config.roleTitles : [config.searchQ];
+    const pages = Math.max(1, config.rolePages || 2);
 
     for (let qi = 0; qi < queries.length; qi += 1) {
       const query = queries[qi];
-      const pages = pagesForSearchQuery(qi);
       for (let p = 1; p <= pages; p += 1) {
         const url = buildSearchUrl(p, query);
         console.log(`[builtin] q="${query}" page ${p}/${pages}: ${url}`);

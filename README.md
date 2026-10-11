@@ -17,7 +17,7 @@ Filter (applied to all sources):
 
 - **Keep:** the job is a **Salesforce-ecosystem** role — title or JD matches product keywords such as `Salesforce`, `Health Cloud`, `Data Cloud`, `Marketing Cloud`, `Service Cloud`, `Agentforce`, `OmniStudio`, `SFMC`, `NPSP`, `MuleSoft`, and similar — the job is **remote only** (not hybrid/on-site), location is US/worldwide (not Canada-only or EMEA/LATAM-only), and it was **posted within the last `RECENT_DAYS` days** (default 3 in code; use 7 in `.env` for apply-now freshness).
 - A single passing CRM name-drop in a generic JD (`experience with Salesforce, HubSpot, or Dynamics`) is **not** enough; Salesforce must be in the title, a named product must appear, or Salesforce must be a primary skill.
-- **Skip:** jobs at the **Salesforce** company itself, **hybrid/on-site** roles, **expired / no-longer-available** postings (Dice banner text; JobRight `isDeleted`/`hiddenJob`), and postings **older than `RECENT_DAYS`** (they also age out of the store/CSVs on each run).
+- **Skip:** jobs at the **Salesforce** company itself, **hybrid/on-site** roles, **sales titles** (account executive, account manager, sales representative, sales force effectiveness, sales force management, regional sales) even when the title also says Salesforce, **expired / no-longer-available** postings (Dice banner text; JobRight `isDeleted`/`hiddenJob`), and postings **older than `RECENT_DAYS`** (they also age out of the store/CSVs on each run).
 - **Skip (already applied / resume built):** jobs whose **Link** is already on the bid-tracking Google Sheet (`BID_TRACKING_SHEET_URL`) — matched by URL / board job id — plus jobs you've already applied to on JobRight / Dice.
 
 ## How automation is split (recommended)
@@ -25,10 +25,10 @@ Filter (applied to all sources):
 | Source | How it runs | Notes |
 |--------|-------------|-------|
 | **Dice** | Windows Task Scheduler | Optional login for applied-job exclusion. Searches `SEARCH_QUERIES` (Salesforce, Health Cloud, Data Cloud, …) |
-| **JobRight** | Scheduler + `/swan` API (saved login) | `npm run jobright:login` once — **no Chrome extension or JobRight UI tabs** during capture |
-| **Built In** | Scheduler (Playwright) | Remote + keyword search; skips listings whose titles aren't Salesforce-related |
+| **JobRight** | Scheduler + `/swan` API (saved login) | `npm run jobright:login` once. Seeds `ROLE_TITLES` (or `JOBRIGHT_TITLES`), `count=20`, pages with `position` up to `JOBRIGHT_MAX_PAGES` (default 5) |
+| **Built In** | Scheduler (Playwright) | Remote search of `ROLE_TITLES`, `ROLE_PAGES` each (default 2). Skips listings whose titles aren't Salesforce-related |
 | **Greenhouse / Lever / Ashby** | Scheduler (public company-board APIs) | Direct from employer career sites — Salesforce ISVs, partners, and companies that hire SF admins/devs (`GREENHOUSE_BOARDS`, `LEVER_BOARDS`, `ASHBY_BOARDS`) |
-| **Remotive / Jobicy / Remote OK / We Work Remotely / Working Nomads / The Muse / Jobspresso / SkipTheDrive / Arc.dev** | Scheduler (public JSON, RSS, or listing pages) | No browser. Jobspresso, SkipTheDrive, and Arc.dev have no API; the bot reads their public search pages |
+| **Remotive / Jobicy / Remote OK / We Work Remotely / Working Nomads / The Muse / Jobspresso / SkipTheDrive / Arc.dev** | Scheduler (public JSON, RSS, or listing pages) | No browser. Jobspresso searches `ROLE_TITLES` (`ROLE_PAGES` each). SkipTheDrive and Arc.dev read public search pages for `SEARCH_QUERIES` |
 | **Himalayas / Jobgether / Arbeitnow** | Scheduler (public JSON APIs) | No browser. Jobgether’s offer API; Himalayas remote search. Arbeitnow is EU-heavy so few US hits. |
 | **USAJOBS / Adzuna** | Scheduler (public APIs, optional keys) | Federal remote roles (USAJOBS) and US aggregator (Adzuna). Free keys at [developer.usajobs.gov](https://developer.usajobs.gov) and [developer.adzuna.com](https://developer.adzuna.com). Skipped until keys are set. |
 | **Google Jobs** | Scheduler (SerpAPI, optional) | Google has no free Jobs API. Set `SERPAPI_KEY` to enable. |
@@ -59,7 +59,7 @@ npm run jobright:login
 
 Sign in once in the browser window, press Enter. Cookies are saved to `download/jobright-auth.json` and reused on every run. Re-run when capture logs say the session expired.
 
-Set `CAPTURE_JOBRIGHT=true` (default). The Chrome extension under `extension/` is **optional** legacy — you do not need it for JobRight.
+Set `CAPTURE_JOBRIGHT=true` (default). Each seed title is requested in pages of 20 (`position = page * 20`) until a short page or `JOBRIGHT_MAX_PAGES` (default 5, up to 100 rows per title). The Chrome extension under `extension/` is **optional** legacy — you do not need it for JobRight.
 
 ### Chrome extension (optional)
 
@@ -131,7 +131,11 @@ Then load `extension/` unpacked in Chrome.
 | `GREENHOUSE_BOARDS` / `LEVER_BOARDS` / `ASHBY_BOARDS` | Comma-separated company board tokens to poll |
 | `CAPTURE_ZIPRECRUITER` / `CAPTURE_MONSTER` / `CAPTURE_CAREERBUILDER` / `CAPTURE_INDEED` | Playwright boards — **off by default** (Cloudflare / empty) |
 | `JOBICY_TAGS` | Jobicy API tags (default `salesforce,crm,mulesoft,apex`) |
-| `SEARCH_QUERIES` | Comma-separated Dice/Built In/Remotive searches (default includes Health Cloud, Data Cloud, Marketing Cloud, Service Cloud, Agentforce, OmniStudio, Salesforce CPQ) |
+| `SEARCH_QUERIES` | Comma-separated Dice/Remotive/Himalayas product searches (default includes Health Cloud, Data Cloud, Marketing Cloud, Service Cloud, Agentforce, OmniStudio, Salesforce CPQ). Built In and Jobspresso use `ROLE_TITLES` instead |
+| `ROLE_TITLES` | Comma-separated role seeds for Built In, Jobspresso, and JobRight (32 Salesforce role titles by default). A bare "Salesforce" query is not used on those boards |
+| `ROLE_PAGES` | Pages per role title on Built In and Jobspresso (default `2`) |
+| `JOBRIGHT_TITLES` | Optional override of the JobRight seed list. When unset, JobRight uses `ROLE_TITLES` |
+| `JOBRIGHT_MAX_PAGES` | JobRight pages per seed title, 20 results each (default `5`) |
 | `EXCLUDE_BID_TRACKING_SHEET` / `BID_TRACKING_SHEET_URL` | Skip jobs whose Link is already on the bid-tracking sheet |
 | `JOBRIGHT_AUTH_PATH` | Playwright login state |
 | `CSV_PREFIX_DICE` / `CSV_PREFIX_JOBRIGHT` | Dated filename prefixes (legacy) |

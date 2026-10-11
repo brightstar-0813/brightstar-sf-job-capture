@@ -130,7 +130,8 @@ export async function searchJobrightJobs(_browser) {
     config.jobrightTitles && config.jobrightTitles.length
       ? config.jobrightTitles
       : [config.searchQ];
-  const perTitle = Math.max(10, Math.min(100, config.pageSize * config.jobrightMaxPages));
+  const pageSize = 20;
+  const pagesPerTitle = Math.max(1, config.jobrightMaxPages);
 
   if (hasAuth && appliedIds.size === 0) {
     const applied = await fetchAppliedJobIds(authPath).catch(() => null);
@@ -141,67 +142,77 @@ export async function searchJobrightJobs(_browser) {
   }
 
   for (const query of titles) {
-    console.log(`[jobright] API recommend/search query="${query}" count=${perTitle}`);
-    const api = await fetchRecommendSearch(authPath, {
-      count: perTitle,
-      query,
-      daysAgo: config.recentDays,
-      position: 0,
-    });
-    const list = Array.isArray(api.jobList) ? api.jobList : [];
-    apiCount += list.length;
-    if (api.ok) queryOkCount += 1;
-    console.log(
-      `[jobright] query="${query}" api jobs=${list.length} jobNum=${api.jobNum ?? "?"} ok=${api.ok}`
-    );
+    let titleOk = false;
+    for (let page = 0; page < pagesPerTitle; page += 1) {
+      const position = page * pageSize;
+      console.log(
+        `[jobright] API recommend/search query="${query}" page=${page + 1}/${pagesPerTitle} count=${pageSize} position=${position}`
+      );
+      const api = await fetchRecommendSearch(authPath, {
+        count: pageSize,
+        query,
+        daysAgo: config.recentDays,
+        position,
+      });
+      const list = Array.isArray(api.jobList) ? api.jobList : [];
+      apiCount += list.length;
+      if (api.ok) titleOk = true;
+      console.log(
+        `[jobright] query="${query}" page=${page + 1} api jobs=${list.length} jobNum=${api.jobNum ?? "?"} ok=${api.ok}`
+      );
+      if (!api.ok || !list.length) break;
 
-    for (const item of list) {
-      const mapped = mapApiJob(item);
-      if (!mapped) continue;
+      for (const item of list) {
+        const mapped = mapApiJob(item);
+        if (!mapped) continue;
 
-      if (seen.has(mapped.id)) continue;
-      seen.add(mapped.id);
+        if (seen.has(mapped.id)) continue;
+        seen.add(mapped.id);
 
-      if (mapped._expired) {
-        expiredSkipped += 1;
-        continue;
-      }
-      if (mapped._linkedinApply) {
-        linkedinSkipped += 1;
-        continue;
-      }
-      if (appliedIds.has(mapped.id)) {
-        appliedSkipped += 1;
-        continue;
-      }
-      if (isSalesforceEmployer(mapped.organization)) {
-        employerSkipped += 1;
-        continue;
-      }
-      if (!isRemoteArrangement(mapped.work_arrangement)) {
-        nonRemoteSkipped += 1;
-        continue;
-      }
-      if (!isSalesforceJob(mapped)) {
-        nonSalesforceSkipped += 1;
-        continue;
-      }
-      if (isWithinRecentDays(mapped.date_posted, config.recentDays) === false) {
-        staleSkipped += 1;
-        continue;
-      }
-      if (/linkedin\.com/i.test(mapped.url || "")) {
-        linkedinSkipped += 1;
-        continue;
+        if (mapped._expired) {
+          expiredSkipped += 1;
+          continue;
+        }
+        if (mapped._linkedinApply) {
+          linkedinSkipped += 1;
+          continue;
+        }
+        if (appliedIds.has(mapped.id)) {
+          appliedSkipped += 1;
+          continue;
+        }
+        if (isSalesforceEmployer(mapped.organization)) {
+          employerSkipped += 1;
+          continue;
+        }
+        if (!isRemoteArrangement(mapped.work_arrangement)) {
+          nonRemoteSkipped += 1;
+          continue;
+        }
+        if (!isSalesforceJob(mapped)) {
+          nonSalesforceSkipped += 1;
+          continue;
+        }
+        if (isWithinRecentDays(mapped.date_posted, config.recentDays) === false) {
+          staleSkipped += 1;
+          continue;
+        }
+        if (/linkedin\.com/i.test(mapped.url || "")) {
+          linkedinSkipped += 1;
+          continue;
+        }
+
+        delete mapped._easyApply;
+        delete mapped._applyLink;
+        delete mapped._isCompanySite;
+        delete mapped._linkedinApply;
+        delete mapped._expired;
+        all.push(mapped);
       }
 
-      delete mapped._easyApply;
-      delete mapped._applyLink;
-      delete mapped._isCompanySite;
-      delete mapped._linkedinApply;
-      delete mapped._expired;
-      all.push(mapped);
+      if (list.length < pageSize) break;
     }
+    if (titleOk) queryOkCount += 1;
   }
 
   const unauthenticated = !hasAuth || (titles.length > 0 && queryOkCount === 0);

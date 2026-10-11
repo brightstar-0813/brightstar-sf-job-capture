@@ -3,7 +3,7 @@
  * POST https://jobspresso.co/jm-ajax/get_listings/
  */
 
-import { config, pagesForSearchQuery } from "../config.js";
+import { config } from "../config.js";
 import { stripHtml } from "../filter.js";
 import {
   emptySkipCounts,
@@ -86,9 +86,12 @@ export async function searchJobspressoJobs() {
   const counts = emptySkipCounts();
   let scanned = 0;
 
-  for (let qi = 0; qi < config.searchQueries.length; qi += 1) {
-    const query = config.searchQueries[qi];
-    const pageCap = pagesForSearchQuery(qi);
+  const queries =
+    config.roleTitles?.length > 0 ? config.roleTitles : [config.searchQ];
+  const pageCap = Math.max(1, config.rolePages || 2);
+
+  for (let qi = 0; qi < queries.length; qi += 1) {
+    const query = queries[qi];
     let maxPages = pageCap;
     for (let page = 1; page <= pageCap && page <= maxPages; page += 1) {
       const url = `${ENDPOINT} q=${encodeURIComponent(query)} page=${page}`;

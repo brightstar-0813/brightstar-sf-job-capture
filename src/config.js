@@ -22,6 +22,42 @@ function csvList(name, fallbackItems) {
     .filter(Boolean);
 }
 
+/** Liebao Salesforce title_list — role seeds, not a bare "Salesforce" query. */
+const DEFAULT_ROLE_TITLES = [
+  "Salesforce Administrator",
+  "Salesforce Developer",
+  "Salesforce Consultant",
+  "Salesforce Business Analyst",
+  "Salesforce Architect",
+  "Salesforce Solution Architect",
+  "Salesforce Solutions Architect",
+  "Salesforce Technical Architect",
+  "Salesforce Engineer",
+  "Salesforce Technical Lead",
+  "Salesforce Technical Consultant",
+  "Salesforce Functional Consultant",
+  "Salesforce QA Engineer",
+  "Salesforce Quality Assurance",
+  "Salesforce Testing",
+  "Salesforce DevOps Engineer",
+  "Salesforce Support Engineer",
+  "Salesforce Integration",
+  "Salesforce Product Owner",
+  "Salesforce Project Manager",
+  "Salesforce Marketing Cloud",
+  "Marketing Cloud Developer",
+  "MuleSoft Developer",
+  "Salesforce CPQ",
+  "Salesforce CPQ Developer",
+  "Health Cloud",
+  "Data Cloud",
+  "Service Cloud",
+  "Revenue Cloud",
+  "Financial Services Cloud",
+  "OmniStudio",
+  "Agentforce",
+];
+
 export const config = {
   root,
   dataDir,
@@ -37,8 +73,10 @@ export const config = {
   port: Number(process.env.PORT || 3847),
   searchQ: process.env.SEARCH_Q || "Salesforce",
   /**
-   * Keyword searches used by Dice / Built In / Remotive. First query uses
-   * MAX_PAGES; the rest use SEARCH_EXTRA_PAGES so product searches stay cheap.
+   * Keyword searches used by Dice, Remotive, Himalayas, and the other
+   * product-query feeds. First query uses MAX_PAGES; the rest use
+   * SEARCH_EXTRA_PAGES so product searches stay cheap. Built In and
+   * Jobspresso use roleTitles instead.
    */
   searchQueries: csvList("SEARCH_QUERIES", [
     "Salesforce",
@@ -349,42 +387,22 @@ export const config = {
   excludeBidTrackingSheet: bool("EXCLUDE_BID_TRACKING_SHEET", true),
   jobrightMaxPages: Math.max(1, Number(process.env.JOBRIGHT_MAX_PAGES || process.env.MAX_PAGES || 5)),
   /**
-   * JobRight search SEEDS (not title filters). A plain "Salesforce" query on
-   * JobRight returns almost only jobs AT the Salesforce company, so we seed the
-   * search with several Salesforce role families to surface Salesforce-skill
-   * roles across many employers. Whether a returned job is KEPT is decided by
-   * the capture rule (Salesforce / Health Cloud / Data Cloud / … in title or as
-   * a primary skill, minus the Salesforce company) — never by matching one of
-   * these seed titles — so differently-titled roles (e.g. "Software Engineer II
-   * (Salesforce)") are still captured. Broaden/tune via JOBRIGHT_TITLES.
+   * Role-title fan-out for Built In, Jobspresso, and JobRight. A bare
+   * "Salesforce" query returns sales roles, so these boards search this list.
+   * Pages per title: ROLE_PAGES (default 2). Tune via ROLE_TITLES.
    */
-  jobrightTitles: String(
-    process.env.JOBRIGHT_TITLES ||
-      [
-        "Salesforce Administrator",
-        "Salesforce Developer",
-        "Salesforce Consultant",
-        "Salesforce Business Analyst",
-        "Salesforce Architect",
-        "Salesforce Engineer",
-        "Salesforce Marketing Cloud",
-        "Salesforce CPQ",
-        "Salesforce Technical Lead",
-        "Salesforce Solution Architect",
-        "Salesforce Project Manager",
-        "Salesforce QA Engineer",
-        "Health Cloud",
-        "Data Cloud",
-        "Service Cloud",
-        "Agentforce",
-        "OmniStudio",
-        "Revenue Cloud",
-        "Financial Services Cloud",
-      ].join(",")
-  )
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean),
+  roleTitles: csvList("ROLE_TITLES", DEFAULT_ROLE_TITLES),
+  rolePages: Math.max(1, Number(process.env.ROLE_PAGES || 2)),
+  /**
+   * JobRight search SEEDS (not title filters). Same list as roleTitles unless
+   * JOBRIGHT_TITLES is set. Whether a returned job is KEPT is decided by the
+   * capture rule — never by matching one of these seed titles — so
+   * differently-titled roles (e.g. "Software Engineer II (Salesforce)") are
+   * still captured.
+   */
+  jobrightTitles: process.env.JOBRIGHT_TITLES
+    ? csvList("JOBRIGHT_TITLES", DEFAULT_ROLE_TITLES)
+    : csvList("ROLE_TITLES", DEFAULT_ROLE_TITLES),
 };
 
 export function pagesForSearchQuery(index) {

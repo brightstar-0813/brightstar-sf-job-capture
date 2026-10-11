@@ -93,6 +93,10 @@ const OTHER_CRM_RE =
 const COMPETING_PLATFORM_RE =
   /\b(magento|shopify|woocommerce|servicenow|workday|veeva|hubspot|salesloft|docusign|sap\b|oracle|epic\b|netsuite)\b/i;
 
+/** Liebao relevance_deny: sales titles that mention Salesforce are still not SF roles. */
+const SALES_ROLE_DENY_RE =
+  /\b(account\s+executive|account\s+manager|sales\s+representative|sales\s+force\s+effectiveness|sales\s+force\s+management|regional\s+sales)\b/i;
+
 // Matches the Salesforce company as an employer, e.g. "Salesforce",
 // "Salesforce.com", "Salesforce, Inc." — but NOT staffing/consulting firms
 // that merely have "Salesforce" as part of a longer name.
@@ -124,6 +128,7 @@ function isPassingCrmMention(description) {
 export function looksSalesforceTitle(title) {
   const t = String(title || "");
   if (!t.trim()) return true;
+  if (SALES_ROLE_DENY_RE.test(t)) return false;
   if (SF_PRODUCT_RE.test(t)) return true;
   if (/\bcpq\b/i.test(t) && !/\b(oracle|sap)\b/i.test(t)) return true;
   if (COMPETING_PLATFORM_RE.test(t) && !SF_PRODUCT_RE.test(t)) return false;
@@ -139,6 +144,7 @@ export function looksSalesforceTitle(title) {
 export function containsSalesforce(title, description) {
   const t = String(title || "");
   const d = String(description || "");
+  if (SALES_ROLE_DENY_RE.test(t)) return false;
   if (SF_PRODUCT_RE.test(t)) return true;
   if (/\bcpq\b/i.test(t) && !/\b(oracle|sap)\b/i.test(t)) return true;
   if (COMPETING_PLATFORM_RE.test(t) && !SF_PRODUCT_RE.test(t)) return false;
