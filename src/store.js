@@ -594,11 +594,9 @@ function jobPostedAtMs(job, now = new Date()) {
 function sortJobsForCsv(jobs, now = new Date()) {
   const list = [...(jobs || [])];
   list.sort((a, b) => {
-    // Site priority first (Built In → Himalayas → Greenhouse → Dice → …),
-    // then newest posting date within each site; undated rows sink.
-    const bySource = csvSourceRank(a) - csvSourceRank(b);
-    if (bySource !== 0) return bySource;
-
+    // Newest posting date first across all sources; undated rows sink.
+    // Source priority (Built In → Himalayas → Greenhouse → Dice → …)
+    // only breaks ties on the same date.
     const aMs = jobPostedAtMs(a, now);
     const bMs = jobPostedAtMs(b, now);
     const aDated = aMs > 0;
@@ -606,13 +604,14 @@ function sortJobsForCsv(jobs, now = new Date()) {
     if (aDated !== bDated) return aDated ? -1 : 1;
     if (bMs !== aMs) return bMs - aMs;
 
-    if (!aDated) {
-      const aSeen =
-        Date.parse(a?.last_seen_at || a?.first_seen_at || "") || 0;
-      const bSeen =
-        Date.parse(b?.last_seen_at || b?.first_seen_at || "") || 0;
-      if (bSeen !== aSeen) return bSeen - aSeen;
-    }
+    const bySource = csvSourceRank(a) - csvSourceRank(b);
+    if (bySource !== 0) return bySource;
+
+    const aSeen =
+      Date.parse(a?.last_seen_at || a?.first_seen_at || "") || 0;
+    const bSeen =
+      Date.parse(b?.last_seen_at || b?.first_seen_at || "") || 0;
+    if (bSeen !== aSeen) return bSeen - aSeen;
 
     return String(b.last_seen_at || "").localeCompare(
       String(a.last_seen_at || "")
