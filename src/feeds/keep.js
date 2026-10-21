@@ -1,7 +1,7 @@
 import { config } from "../config.js";
 import {
   containsSalesforce,
-  isSalesforceEmployer,
+  isBlockedEmployer,
   isRemoteArrangement,
   isUsFriendlyLocation,
   isWithinRecentDays,
@@ -22,7 +22,7 @@ export function isoDate(value) {
  * Shared keep/drop for JSON/RSS feed jobs. Mutates `counts`.
  */
 export function keepFeedJob(job, counts, { skipRecency = false } = {}) {
-  if (isSalesforceEmployer(job.organization)) {
+  if (isBlockedEmployer(job.organization)) {
     counts.employer += 1;
     return false;
   }

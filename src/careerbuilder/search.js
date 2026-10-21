@@ -8,7 +8,7 @@ import { config } from "../config.js";
 import { contextOptions } from "../browser.js";
 import {
   containsSalesforce,
-  isSalesforceEmployer,
+  isBlockedEmployer,
   isRemoteArrangement,
   isWithinRecentDays,
   isExpiredPosting,
@@ -183,7 +183,7 @@ export async function searchCareerbuilderJobs(browser) {
               .trim(),
           };
 
-          if (isSalesforceEmployer(job.organization)) continue;
+          if (isBlockedEmployer(job.organization)) continue;
           if (!isRemoteArrangement(job.work_arrangement)) continue;
           if (!containsSalesforce(job.title, job.description)) continue;
           if (isWithinRecentDays(job.date_posted, config.recentDays) === false)

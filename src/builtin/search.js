@@ -6,7 +6,7 @@ import { config } from "../config.js";
 import { contextOptions } from "../browser.js";
 import {
   containsSalesforce,
-  isSalesforceEmployer,
+  isBlockedEmployer,
   isRemoteArrangement,
   isWithinRecentDays,
   parsePostedDate,
@@ -182,7 +182,7 @@ export async function searchBuiltinJobs(browser) {
       console.log(`[builtin] detail ${i + 1}/${toScrape.length}: ${stub.id}`);
       try {
         const job = await scrapeDetail(page, stub);
-        if (isSalesforceEmployer(job.organization)) {
+        if (isBlockedEmployer(job.organization)) {
           employer += 1;
           continue;
         }

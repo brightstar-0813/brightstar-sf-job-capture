@@ -10,7 +10,7 @@ import { config } from "../config.js";
 import { browserLaunchOptions, contextOptions } from "../browser.js";
 import {
   containsSalesforce,
-  isSalesforceEmployer,
+  isBlockedEmployer,
   isRemoteArrangement,
   isUsFriendlyLocation,
   isWithinRecentDays,
@@ -115,7 +115,7 @@ function mapCard(card) {
 function keepJob(job) {
   if (!job?.id || job.expired) return false;
   if (isExpiredPosting(`${job.title}\n${job.description}`)) return false;
-  if (isSalesforceEmployer(job.organization)) return false;
+  if (isBlockedEmployer(job.organization)) return false;
   if (!isRemoteArrangement(job.work_arrangement)) return false;
   if (!isUsFriendlyLocation(job.location, job.title)) return false;
   if (!containsSalesforce(job.title, job.description)) return false;

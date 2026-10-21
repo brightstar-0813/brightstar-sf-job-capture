@@ -9,7 +9,7 @@ import { config } from "../config.js";
 import { contextOptions } from "../browser.js";
 import {
   containsSalesforce,
-  isSalesforceEmployer,
+  isBlockedEmployer,
   isRemoteArrangement,
   isWithinRecentDays,
   isExpiredPosting,
@@ -172,7 +172,7 @@ export async function searchMonsterJobs(browser) {
                 .trim(),
             };
 
-            if (isSalesforceEmployer(job.organization)) continue;
+            if (isBlockedEmployer(job.organization)) continue;
             if (isExpiredPosting(`${job.title}\n${job.description}`)) continue;
             if (!isRemoteArrangement(job.work_arrangement)) continue;
             if (!containsSalesforce(job.title, job.description)) continue;

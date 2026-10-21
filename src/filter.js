@@ -102,6 +102,9 @@ const SALES_ROLE_DENY_RE =
 // that merely have "Salesforce" as part of a longer name.
 const SALESFORCE_EMPLOYER_RE = /^\s*salesforce(?:\.com|,?\s*inc\.?)?\s*$/i;
 
+// ICF / ICF International / ICF Consulting Group, etc. — permanently excluded.
+const ICF_EMPLOYER_RE = /^\s*icf\b/i;
+
 function isPassingCrmMention(description) {
   const d = String(description || "");
   if (/salesforce\s*[,;/|&]\s*/i.test(d) && OTHER_CRM_RE.test(d)) return true;
@@ -161,6 +164,21 @@ export function containsSalesforce(title, description) {
 
 export function isSalesforceEmployer(organization) {
   return SALESFORCE_EMPLOYER_RE.test(String(organization || "").trim());
+}
+
+export function isIcfEmployer(organization) {
+  return ICF_EMPLOYER_RE.test(String(organization || "").trim());
+}
+
+/** Employers we never keep (Salesforce-the-company, ICF, …). */
+export function isBlockedEmployer(organization) {
+  return isSalesforceEmployer(organization) || isIcfEmployer(organization);
+}
+
+export function blockedEmployerReason(organization) {
+  if (isSalesforceEmployer(organization)) return "employer is Salesforce";
+  if (isIcfEmployer(organization)) return "employer is ICF";
+  return null;
 }
 
 const US_RE = /\b(united states|usa|u\.s\.a\.?|u\.s\.)\b/;
@@ -240,7 +258,8 @@ export function isExpiredPosting(text) {
  */
 export function captureRuleReason(job) {
   if (!job) return "empty";
-  if (isSalesforceEmployer(job.organization)) return "employer is Salesforce";
+  const employerReason = blockedEmployerReason(job.organization);
+  if (employerReason) return employerReason;
   if (!isRemoteArrangement(job.work_arrangement)) return "not remote";
   if (!isUsFriendlyLocation(job.location, job.title)) return "location not US";
   if (!containsSalesforce(job.title, job.description)) {

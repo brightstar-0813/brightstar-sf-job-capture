@@ -7,7 +7,7 @@ import fs from "fs";
 import { config } from "../config.js";
 import {
   containsSalesforce,
-  isSalesforceEmployer,
+  isBlockedEmployer,
   isRemoteArrangement,
   parsePostedDate,
   isWithinRecentDays,
@@ -94,7 +94,7 @@ function mapApiJob(item) {
 }
 
 function isSalesforceJob(mapped) {
-  if (isSalesforceEmployer(mapped.organization)) return false;
+  if (isBlockedEmployer(mapped.organization)) return false;
   return containsSalesforce(mapped.title, mapped.description);
 }
 
@@ -181,7 +181,7 @@ export async function searchJobrightJobs(_browser) {
           appliedSkipped += 1;
           continue;
         }
-        if (isSalesforceEmployer(mapped.organization)) {
+        if (isBlockedEmployer(mapped.organization)) {
           employerSkipped += 1;
           continue;
         }
@@ -220,7 +220,7 @@ export async function searchJobrightJobs(_browser) {
   console.log(
     `[jobright] kept ${all.length} remote Salesforce jobs` +
       ` (titles=${titles.length}, api=${apiCount}, okQueries=${queryOkCount}/${titles.length},` +
-      ` skipped Salesforce-employer=${employerSkipped},` +
+      ` skipped blocked-employer=${employerSkipped},` +
       ` skipped non-remote=${nonRemoteSkipped}, skipped non-Salesforce=${nonSalesforceSkipped},` +
       ` skipped already-applied=${appliedSkipped}, skipped expired=${expiredSkipped},` +
       ` skipped LinkedIn-apply=${linkedinSkipped},` +

@@ -11,7 +11,7 @@
 (function () {
   // Bump when scrape/API body changes so executeScript can replace a stale
   // injection (old code used workModel: ["Remote"] → HTTP 400).
-  const CS_VERSION = 8;
+  const CS_VERSION = 9;
   if (window.__SF_JOBRIGHT_CS_VERSION__ === CS_VERSION) return;
   if (typeof window.__SF_JOBRIGHT_CS_LISTENER__ === "function") {
     try {
@@ -31,6 +31,8 @@ const COMPETING_PLATFORM_RE = /\b(magento|shopify|woocommerce|servicenow|workday
 // Salesforce as an employer (exclude), but not staffing firms whose name merely
 // contains "Salesforce".
 const SALESFORCE_EMPLOYER_RE = /^\s*salesforce(?:\.com|,?\s*inc\.?)?\s*$/i;
+// ICF / ICF International / ICF Consulting Group, etc. — permanently excluded.
+const ICF_EMPLOYER_RE = /^\s*icf\b/i;
 
 function isPassingCrmMention(description) {
   const d = String(description || "");
@@ -60,6 +62,14 @@ function containsSalesforce(title, description) {
 
 function isSalesforceEmployer(organization) {
   return SALESFORCE_EMPLOYER_RE.test(String(organization || "").trim());
+}
+
+function isIcfEmployer(organization) {
+  return ICF_EMPLOYER_RE.test(String(organization || "").trim());
+}
+
+function isBlockedEmployer(organization) {
+  return isSalesforceEmployer(organization) || isIcfEmployer(organization);
 }
 
 function isRemoteArrangement(workArrangement) {
@@ -316,7 +326,7 @@ function mapItem(item, applyLabel) {
 }
 
 function isSalesforceJob(mapped) {
-  if (isSalesforceEmployer(mapped.organization)) return false;
+  if (isBlockedEmployer(mapped.organization)) return false;
   return containsSalesforce(mapped.title, mapped.description);
 }
 

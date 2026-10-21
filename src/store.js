@@ -17,7 +17,7 @@ const ATS_SOURCES = new Set(["greenhouse", "lever", "ashby"]);
 
 /**
  * A job qualifies for the store/CSV output when it matches the capture rule
- * (remote Salesforce-ecosystem role, non-Salesforce employer) AND was posted
+ * (remote Salesforce-ecosystem role, non-blocked employer) AND was posted
  * within the configured recency window. Greenhouse/Lever/Ashby jobs instead
  * stay while we still see them on the live board (last_seen_at).
  * LinkedIn URLs are rejected by matchesCaptureRule.
