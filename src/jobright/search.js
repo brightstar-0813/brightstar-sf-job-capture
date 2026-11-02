@@ -1,9 +1,8 @@
 /**
  * JobRight.ai Salesforce search — remote US roles via recommend/search API only.
- * No browser tabs, no Chrome extension. Session from `npm run jobright:login`.
+ * No browser, Chrome extension, or login session.
  */
 
-import fs from "fs";
 import { config } from "../config.js";
 import {
   containsSalesforce,
@@ -17,7 +16,7 @@ import {
   pickJobrightJobUrl,
   buildJobrightDescription,
 } from "./url.js";
-import { fetchRecommendSearch, fetchAppliedJobIds } from "./client.js";
+import { fetchRecommendSearch } from "./client.js";
 
 export function buildJobrightSearchUrl(page = 1, query = config.searchQ) {
   const taxonomy = encodeURIComponent(
@@ -99,32 +98,22 @@ function isSalesforceJob(mapped) {
 }
 
 /**
- * Fetch remote Salesforce jobs from JobRight API (no browser).
+ * Fetch remote Salesforce jobs from JobRight API (no browser, no login).
  * @param {import('playwright').Browser} [_browser] ignored — kept for capture.js compat
  */
 export async function searchJobrightJobs(_browser) {
-  const authPath = config.jobrightAuthPath;
-  const hasAuth = fs.existsSync(authPath);
-  if (hasAuth) {
-    console.log(`[jobright] API-only mode, auth: ${authPath}`);
-  } else {
-    console.warn(
-      `[jobright] no auth at ${authPath} — run: npm run jobright:login`
-    );
-  }
+  console.log(`[jobright] API-only mode (no login session)`);
 
   const all = [];
   const seen = new Set();
   let employerSkipped = 0;
   let nonRemoteSkipped = 0;
   let nonSalesforceSkipped = 0;
-  let appliedSkipped = 0;
   let staleSkipped = 0;
   let expiredSkipped = 0;
   let linkedinSkipped = 0;
   let apiCount = 0;
   let queryOkCount = 0;
-  let appliedIds = new Set();
 
   const titles =
     config.jobrightTitles && config.jobrightTitles.length
@@ -133,14 +122,6 @@ export async function searchJobrightJobs(_browser) {
   const pageSize = 20;
   const pagesPerTitle = Math.max(1, config.jobrightMaxPages);
 
-  if (hasAuth && appliedIds.size === 0) {
-    const applied = await fetchAppliedJobIds(authPath).catch(() => null);
-    if (applied?.ok && applied.ids.length) {
-      appliedIds = new Set(applied.ids);
-      console.log(`[jobright] already-applied jobs to exclude: ${appliedIds.size}`);
-    }
-  }
-
   for (const query of titles) {
     let titleOk = false;
     for (let page = 0; page < pagesPerTitle; page += 1) {
@@ -148,7 +129,7 @@ export async function searchJobrightJobs(_browser) {
       console.log(
         `[jobright] API recommend/search query="${query}" page=${page + 1}/${pagesPerTitle} count=${pageSize} position=${position}`
       );
-      const api = await fetchRecommendSearch(authPath, {
+      const api = await fetchRecommendSearch({
         count: pageSize,
         query,
         daysAgo: config.recentDays,
@@ -158,7 +139,8 @@ export async function searchJobrightJobs(_browser) {
       apiCount += list.length;
       if (api.ok) titleOk = true;
       console.log(
-        `[jobright] query="${query}" page=${page + 1} api jobs=${list.length} jobNum=${api.jobNum ?? "?"} ok=${api.ok}`
+        `[jobright] query="${query}" page=${page + 1} api jobs=${list.length} jobNum=${api.jobNum ?? "?"} ok=${api.ok}` +
+          (api.errorMsg ? ` err=${api.errorMsg}` : "")
       );
       if (!api.ok || !list.length) break;
 
@@ -175,10 +157,6 @@ export async function searchJobrightJobs(_browser) {
         }
         if (mapped._linkedinApply) {
           linkedinSkipped += 1;
-          continue;
-        }
-        if (appliedIds.has(mapped.id)) {
-          appliedSkipped += 1;
           continue;
         }
         if (isBlockedEmployer(mapped.organization)) {
@@ -215,31 +193,15 @@ export async function searchJobrightJobs(_browser) {
     if (titleOk) queryOkCount += 1;
   }
 
-  const unauthenticated = !hasAuth || (titles.length > 0 && queryOkCount === 0);
-
   console.log(
     `[jobright] kept ${all.length} remote Salesforce jobs` +
       ` (titles=${titles.length}, api=${apiCount}, okQueries=${queryOkCount}/${titles.length},` +
       ` skipped blocked-employer=${employerSkipped},` +
       ` skipped non-remote=${nonRemoteSkipped}, skipped non-Salesforce=${nonSalesforceSkipped},` +
-      ` skipped already-applied=${appliedSkipped}, skipped expired=${expiredSkipped},` +
+      ` skipped expired=${expiredSkipped},` +
       ` skipped LinkedIn-apply=${linkedinSkipped},` +
       ` skipped stale(>${config.recentDays}d)=${staleSkipped})`
   );
-  if (unauthenticated) {
-    console.warn(
-      `[jobright] session unauthenticated (login missing or expired) — run: npm run jobright:login`
-    );
-  }
 
-  return {
-    jobs: all,
-    appliedIds: Array.from(appliedIds),
-    auth: {
-      hadAuthFile: hasAuth,
-      attempts: titles.length,
-      okQueries: queryOkCount,
-      unauthenticated,
-    },
-  };
+  return { jobs: all };
 }

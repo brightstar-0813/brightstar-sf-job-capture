@@ -18,14 +18,14 @@ Filter (applied to all sources):
 - **Keep:** the job is a **Salesforce-ecosystem** role — title or JD matches product keywords such as `Salesforce`, `Health Cloud`, `Data Cloud`, `Marketing Cloud`, `Service Cloud`, `Agentforce`, `OmniStudio`, `SFMC`, `NPSP`, `MuleSoft`, and similar — the job is **remote only** (not hybrid/on-site), location is US/worldwide (not Canada-only or EMEA/LATAM-only), and it was **posted within the last `RECENT_DAYS` days** (default 3 in code; use 7 in `.env` for apply-now freshness).
 - A single passing CRM name-drop in a generic JD (`experience with Salesforce, HubSpot, or Dynamics`) is **not** enough; Salesforce must be in the title, a named product must appear, or Salesforce must be a primary skill.
 - **Skip:** jobs at the **Salesforce** company itself, **ICF** (and ICF International / Consulting Group), **hybrid/on-site** roles, **sales titles** (account executive, account manager, sales representative, sales force effectiveness, sales force management, regional sales) even when the title also says Salesforce, **expired / no-longer-available** postings (Dice banner text; JobRight `isDeleted`/`hiddenJob`), and postings **older than `RECENT_DAYS`** (they also age out of the store/CSVs on each run).
-- **Skip (already applied / resume built):** jobs whose **Link** is already on the bid-tracking Google Sheet (`BID_TRACKING_SHEET_URL`) — matched by URL / board job id — plus jobs you've already applied to on JobRight / Dice.
+- **Skip (already applied / resume built):** jobs whose **Link** is already on the bid-tracking Google Sheet (`BID_TRACKING_SHEET_URL`) — matched by URL / board job id.
 
 ## How automation is split (recommended)
 
 | Source | How it runs | Notes |
 |--------|-------------|-------|
-| **Dice** | Windows Task Scheduler | Optional login for applied-job exclusion. Searches `SEARCH_QUERIES` (Salesforce, Health Cloud, Data Cloud, …) |
-| **JobRight** | Scheduler + `/swan` API (saved login) | `npm run jobright:login` once. Seeds `ROLE_TITLES` (or `JOBRIGHT_TITLES`), `count=20`, pages with `position` up to `JOBRIGHT_MAX_PAGES` (default 5) |
+| **Dice** | Windows Task Scheduler | Anonymous Playwright scrape (no login). Searches `SEARCH_QUERIES` (Salesforce, Health Cloud, Data Cloud, …) |
+| **JobRight** | Scheduler + `/swan` API | No login. Seeds `ROLE_TITLES` (or `JOBRIGHT_TITLES`), `count=20`, pages with `position` up to `JOBRIGHT_MAX_PAGES` (default 5) |
 | **Built In** | Scheduler (Playwright) | Remote search of `ROLE_TITLES`, `ROLE_PAGES` each (default 2). Skips listings whose titles aren't Salesforce-related |
 | **Greenhouse / Lever / Ashby** | Scheduler (public company-board APIs) | Direct from employer career sites — Salesforce ISVs, partners, and companies that hire SF admins/devs (`GREENHOUSE_BOARDS`, `LEVER_BOARDS`, `ASHBY_BOARDS`) |
 | **Remotive / Jobicy / Remote OK / We Work Remotely / Working Nomads / The Muse / Jobspresso / SkipTheDrive / Arc.dev** | Scheduler (public JSON, RSS, or listing pages) | No browser. Jobspresso searches `ROLE_TITLES` (`ROLE_PAGES` each). SkipTheDrive and Arc.dev read public search pages for `SEARCH_QUERIES` |
@@ -50,39 +50,15 @@ Optional: set `JOBSPY_PYTHON` to a working interpreter and `JOBSPY_ROOT` if the 
 npm run jobspy
 ```
 
-### Optional: skip already-applied Dice jobs
-
-Dice capture works logged-out, but to also **exclude jobs you've already applied to on Dice**, save a one-time session:
-
-```bash
-npm run dice:login
-```
-
-A browser opens — sign in, land on your dashboard, press Enter. The session is saved to `download/dice-auth.json` and reused on every run. When it expires you'll get a Slack alert to re-run `npm run dice:login` (Dice capture keeps working meanwhile, just without applied-job exclusion).
-
 ### Indeed (disabled by default)
 
 Indeed scraping is **off** (`CAPTURE_INDEED=false`). To re-enable: set `CAPTURE_INDEED=true`, run `npm run indeed:login` once (Cloudflare), then capture. JobRight apply links that point at Indeed are still kept when complete.
 
-### JobRight (API-only — recommended)
+### JobRight (API-only, no login)
 
-JobRight is fetched via **`POST /swan/recommend/search`** using cookies saved by a one-time login. No Chrome extension and no JobRight search pages are opened during scheduled capture.
+JobRight is fetched via **`POST /swan/recommend/search`** with no saved session. No Chrome extension and no JobRight search pages are opened during scheduled capture.
 
-```bash
-npm run jobright:login
-```
-
-Sign in once in the browser window, press Enter. Cookies are saved to `download/jobright-auth.json` and reused on every run. Re-run when capture logs say the session expired.
-
-Set `CAPTURE_JOBRIGHT=true` (default). Each seed title is requested in pages of 20 (`position = page * 20`) until a short page or `JOBRIGHT_MAX_PAGES` (default 5, up to 100 rows per title). The Chrome extension under `extension/` is **optional** legacy — you do not need it for JobRight.
-
-### Chrome extension (optional)
-
-The extension can still post JobRight jobs using your Chrome cookies if you prefer that path. **LinkedIn is not fetched.** Most users should use API-only JobRight above instead.
-
-1. Stay signed in to [jobright.ai](https://jobright.ai) in Chrome
-2. API auto-starts at Windows logon (`npm run schedule:api`)
-3. Load `extension/` unpacked in Chrome if you want extension-based JobRight
+Set `CAPTURE_JOBRIGHT=true` (default). Each seed title is requested in pages of 20 (`position = page * 20`) until a short page or `JOBRIGHT_MAX_PAGES` (default 5, up to 100 rows per title).
 
 Export CSV from `download/jobs_latest.csv`, numbered per-source files like `download/05_dice_jobs_latest.csv`, or `http://127.0.0.1:3847/api/export.csv` (optional `?source=dice`). Full multi-board capture still runs from Task Scheduler / `npm run capture`.
 
@@ -99,7 +75,7 @@ npm run schedule:install
 | `DiceJobCapture_5am5pm` | Runs capture at **5 AM and 5 PM** local, every day |
 | `DiceJobCapture_API_AtLogon` | Starts `node src/server.js` when you log in (local API + cron) |
 
-You do **not** need to open Cursor or type `npm start` after that — run `npm run jobright:login` once for JobRight. Chrome extension is optional.
+You do **not** need to open Cursor or type `npm start` after that.
 
 Optional checks:
 
@@ -138,7 +114,7 @@ Then load `extension/` unpacked in Chrome.
 | Key | Meaning |
 |-----|---------|
 | `CAPTURE_DICE` | `true`/`false` |
-| `CAPTURE_JOBRIGHT` | JobRight via `/swan` API + `jobright-auth.json` (`true` by default). Extension not required |
+| `CAPTURE_JOBRIGHT` | JobRight via `/swan` API, no login (`true` by default) |
 | `CAPTURE_REMOTIVE` / `CAPTURE_JOBICY` / `CAPTURE_REMOTEOK` / `CAPTURE_WWR` / `CAPTURE_THEMUSE` | Public JSON/RSS (`true` by default) |
 | `CAPTURE_HIMALAYAS` / `CAPTURE_JOBGETHER` / `CAPTURE_ARBEITNOW` | Extra public JSON APIs (`true` by default) |
 | `CAPTURE_GOOGLEJOBS` / `SERPAPI_KEY` | Google Jobs via SerpAPI (skipped until a key is set) |
@@ -153,7 +129,6 @@ Then load `extension/` unpacked in Chrome.
 | `JOBRIGHT_TITLES` | Optional override of the JobRight seed list. When unset, JobRight uses `ROLE_TITLES` |
 | `JOBRIGHT_MAX_PAGES` | JobRight pages per seed title, 20 results each (default `5`) |
 | `EXCLUDE_BID_TRACKING_SHEET` / `BID_TRACKING_SHEET_URL` | Skip jobs whose Link is already on the bid-tracking sheet |
-| `JOBRIGHT_AUTH_PATH` | Playwright login state |
 | `CSV_PREFIX_DICE` / `CSV_PREFIX_JOBRIGHT` | Dated filename prefixes (legacy) |
 | Per-source latest CSVs | `download/NN_{source}_jobs_latest.csv` (fixed sequence) plus Workday URL view; each file has a `seq` column |
 | `DATA_DIR` | Output folder (`download`) |
@@ -162,5 +137,4 @@ Then load `extension/` unpacked in Chrome.
 ## Notes
 
 - Personal job-hunting use; polite delays / page caps.
-- After JobRight UI changes, re-run `npm run jobright:login` if autofill jobs stop appearing.
 - LinkedIn is not scraped; JobRight listings that apply via LinkedIn are skipped; LinkedIn URLs from any board are excluded from the store/CSV.

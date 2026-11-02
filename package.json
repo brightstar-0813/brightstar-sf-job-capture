@@ -9,8 +9,6 @@
     "start": "node src/server.js",
     "jobspy": "node src/jobspy/search.js",
     "jobspy:deps": "node scripts/install-jobspy-deps.mjs",
-    "jobright:login": "node src/jobright-login.js",
-    "dice:login": "node src/dice-login.js",
     "indeed:login": "node src/indeed-login.js",
     "schedule:install": "powershell -ExecutionPolicy Bypass -File scripts/install-all-schedulers.ps1",
     "schedule:dice": "powershell -ExecutionPolicy Bypass -File scripts/install-scheduler.ps1",

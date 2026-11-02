@@ -1,11 +1,9 @@
 /**
- * Dice search listing helpers.
+ * Dice search listing helpers — anonymous Playwright scrape (no login session).
  */
 
-import fs from "fs";
 import { config, pagesForSearchQuery } from "../config.js";
 import { contextOptions as playwrightContext } from "../browser.js";
-import { collectDiceAppliedIds } from "./applied.js";
 
 /**
  * Map a recency window (days) to Dice's coarse postedDate token. Dice only
@@ -165,40 +163,12 @@ export async function scrapeSearchPage(page) {
  * @param {import('playwright').Browser} browser
  */
 export async function searchDiceJobs(browser) {
-  const contextOptions = playwrightContext();
-  if (fs.existsSync(config.diceAuthPath)) {
-    contextOptions.storageState = config.diceAuthPath;
-    console.log(`[search] using Dice auth: ${config.diceAuthPath}`);
-  }
-  const hasDiceAuth = fs.existsSync(config.diceAuthPath);
-  const context = await browser.newContext(contextOptions);
+  const context = await browser.newContext(playwrightContext());
   let page = await context.newPage();
   const all = [];
   const seenIds = new Set();
-  let appliedIds = new Set();
-  let appliedSkipped = 0;
-  let diceAuthExpired = false;
 
   try {
-    // With a saved session, read already-applied jobs so we can skip them.
-    if (hasDiceAuth) {
-      const applied = await collectDiceAppliedIds(page).catch(() => null);
-      if (applied) {
-        appliedIds = new Set(applied.ids);
-        diceAuthExpired = applied.loginRedirect === true;
-        if (diceAuthExpired) {
-          console.warn(
-            `[search] Dice session expired — applied jobs can't be excluded. Run: npm run dice:login`
-          );
-        } else {
-          console.log(`[search] already-applied Dice jobs to exclude: ${appliedIds.size}`);
-        }
-      }
-      // The applied-jobs page can crash the renderer. Search on a new page.
-      await page.close().catch(() => {});
-      page = await context.newPage();
-    }
-
     async function gotoSearch(url) {
       try {
         await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
@@ -245,10 +215,6 @@ export async function searchDiceJobs(browser) {
           for (const job of batch) {
             if (seenIds.has(job.id)) continue;
             seenIds.add(job.id);
-            if (appliedIds.has(job.id)) {
-              appliedSkipped += 1;
-              continue;
-            }
             all.push(job);
             newOnPage += 1;
           }
@@ -270,15 +236,6 @@ export async function searchDiceJobs(browser) {
     await context.close();
   }
 
-  if (hasDiceAuth && !diceAuthExpired) {
-    console.log(
-      `[search] dice stubs=${all.length} (skipped already-applied=${appliedSkipped})`
-    );
-  }
-
-  return {
-    jobs: all,
-    appliedIds: Array.from(appliedIds),
-    unauthenticated: hasDiceAuth && diceAuthExpired,
-  };
+  console.log(`[search] dice stubs=${all.length} (anonymous, no login)`);
+  return { jobs: all };
 }

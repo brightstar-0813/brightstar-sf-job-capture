@@ -48,18 +48,13 @@ import {
   getMeta,
   pruneStore,
   repairJobrightUrls,
-  removeJobs,
   removeJobsWhere,
 } from "./store.js";
 import {
   loadBidTrackingExclusions,
   isExcludedBySheet,
 } from "./sheet-exclude.js";
-import {
-  notifyCaptureComplete,
-  notifyJobrightLoginExpired,
-  notifyDiceLoginExpired,
-} from "./slack.js";
+import { notifyCaptureComplete } from "./slack.js";
 
 let running = false;
 let sheetExclusions = null;
@@ -178,8 +173,6 @@ export async function runCapture({ skipSlack = false } = {}) {
   const runId = beginRun();
   const counts = { newCount: 0, updatedCount: 0, skippedCount: 0 };
   const newJobs = [];
-  let jobrightAuthExpired = false;
-  let diceAuthExpired = false;
   const enabled = enabledSources();
 
   console.log(
@@ -220,9 +213,7 @@ export async function runCapture({ skipSlack = false } = {}) {
 
     if (config.captureDice) {
       await runNamedSource("dice", async () => {
-        const { jobs: stubs, appliedIds: diceApplied, unauthenticated } =
-          await searchDiceJobs(browser);
-        diceAuthExpired = !!unauthenticated;
+        const { jobs: stubs } = await searchDiceJobs(browser);
         const relevant = stubs.filter((s) => looksSalesforceTitle(s.title));
         const skippedTitle = stubs.length - relevant.length;
         console.log(
@@ -234,15 +225,6 @@ export async function runCapture({ skipSlack = false } = {}) {
         const details = await scrapeJobDetails(browser, relevant);
         console.log(`[capture] dice details: ${details.length}`);
         ingestJobs(details, runId, counts, newJobs);
-
-        if (Array.isArray(diceApplied) && diceApplied.length) {
-          const { removed } = removeJobs(diceApplied);
-          if (removed > 0) {
-            console.log(
-              `[capture] removed ${removed} already-applied dice jobs from store`
-            );
-          }
-        }
       });
     }
 
@@ -309,19 +291,9 @@ export async function runCapture({ skipSlack = false } = {}) {
     // JobRight last among browser sources (lowest source priority).
     if (config.captureJobright) {
       await runNamedSource("jobright", async () => {
-        const { jobs: jrJobs, auth, appliedIds } = await searchJobrightJobs(browser);
+        const { jobs: jrJobs } = await searchJobrightJobs(browser);
         console.log(`[capture] jobright jobs: ${jrJobs.length}`);
-        jobrightAuthExpired = !!auth?.unauthenticated;
         ingestJobs(jrJobs, runId, counts, newJobs);
-
-        if (Array.isArray(appliedIds) && appliedIds.length) {
-          const { removed } = removeJobs(appliedIds);
-          if (removed > 0) {
-            console.log(
-              `[capture] removed ${removed} already-applied jobright jobs from store`
-            );
-          }
-        }
       });
     }
 
@@ -381,18 +353,6 @@ export async function runCapture({ skipSlack = false } = {}) {
           ...counts,
           newJobs,
         });
-        if (jobrightAuthExpired) {
-          await notifyJobrightLoginExpired({
-            webhookUrl: config.slackWebhookUrl,
-            runId,
-          });
-        }
-        if (diceAuthExpired) {
-          await notifyDiceLoginExpired({
-            webhookUrl: config.slackWebhookUrl,
-            runId,
-          });
-        }
       } catch (slackErr) {
         console.warn(`[slack] ${slackErr.message}`);
       }
