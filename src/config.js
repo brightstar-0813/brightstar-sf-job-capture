@@ -146,6 +146,47 @@ export const config = {
   captureLever: bool("CAPTURE_LEVER", true),
   captureAshby: bool("CAPTURE_ASHBY", true),
   /**
+   * JobSpy / salesforce_jobs feeder (sibling Python package). Pulls Glassdoor,
+   * ZipRecruiter, niche remotes, and ATS boards Node is weak on, then merges
+   * into store.json / jobs_latest.csv. Off only if CAPTURE_JOBSPY=false.
+   */
+  captureJobspy: bool("CAPTURE_JOBSPY", true),
+  jobspyRoot: path.resolve(
+    root,
+    process.env.JOBSPY_ROOT ||
+      path.join("..", "JobSpy", "JobSpy")
+  ),
+  jobspyPython: String(process.env.JOBSPY_PYTHON || "").trim(),
+  /** Site-packages dir for JobSpy deps when the sibling .venv is broken. */
+  jobspyPythonPath: path.resolve(
+    root,
+    process.env.JOBSPY_PYTHONPATH || path.join("download", "jobspy-py")
+  ),
+  jobspyWorkDir: path.resolve(
+    root,
+    process.env.JOBSPY_WORK_DIR || path.join("download", "jobspy")
+  ),
+  jobspyTimeoutMs: Math.max(
+    60_000,
+    Number(process.env.JOBSPY_TIMEOUT_MS || 45 * 60 * 1000)
+  ),
+  jobspyHoursOld: Math.max(0, Number(process.env.JOBSPY_HOURS_OLD || 0)),
+  jobspyResultsPerSource: Math.max(
+    25,
+    Number(process.env.JOBSPY_RESULTS_PER_SOURCE || 300)
+  ),
+  jobspyMaxPages: Math.max(1, Number(process.env.JOBSPY_MAX_PAGES || 8)),
+  jobspyMaxRequestsPerSource: Math.max(
+    20,
+    Number(process.env.JOBSPY_MAX_REQUESTS_PER_SOURCE || 100)
+  ),
+  jobspyBrowserChannel: String(
+    process.env.JOBSPY_BROWSER_CHANNEL || "msedge"
+  ).trim(),
+  /** Use the full public JobSpy site list (slower; max coverage). */
+  jobspyFull: bool("JOBSPY_FULL", true),
+  jobspySites: csvList("JOBSPY_SITES", []),
+  /**
    * Greenhouse board tokens (boards.greenhouse.io/{token}). No global search —
    * we poll Salesforce ISVs/partners plus employers that commonly hire
    * Salesforce talent. Tune via GREENHOUSE_BOARDS.
@@ -263,6 +304,20 @@ export const config = {
     "blackthorn",
     "dealhub",
     "apolloio",
+    "veeva",
+    "salesforce",
+    "trailheadservices",
+    "accenture",
+    "deloittedigital",
+    "capgemini",
+    "cognizant",
+    "infosys",
+    "wipro",
+    "tcs",
+    "ibm",
+    "pwc",
+    "ey",
+    "kpmg",
   ]),
   /**
    * Lever company tokens (jobs.lever.co/{token}). Same idea as Greenhouse.
@@ -321,6 +376,12 @@ export const config = {
     "scaleai",
     "posthog",
     "loom",
+    "veeva",
+    "blackthorn",
+    "dealhub",
+    "floqast",
+    "tipalti",
+    "billcom",
   ]),
   /**
    * Ashby job-board tokens (jobs.ashbyhq.com/{token}).
@@ -354,6 +415,12 @@ export const config = {
     "figma",
     "canva",
     "intercom",
+    "veeva",
+    "blackthorn",
+    "dealhub",
+    "cursor",
+    "retool",
+    "sidecar",
   ]),
   jobrightAuthPath: path.resolve(
     root,
@@ -432,9 +499,26 @@ export const SOURCE_IDS = [
   "adzuna",
   "googlejobs",
   "ziprecruiter",
+  "glassdoor",
   "monster",
   "indeed",
   "careerbuilder",
+  "wellfound",
+  "nodesk",
+  "remoterocketship",
+  "dynamitejobs",
+  "justremote",
+  "remote100k",
+  "freelancer",
+  "powertofly",
+  "idealist",
+  "higheredjobs",
+  "workingsolutions",
+  "crossover",
+  "welcometothejungle",
+  "dribbble",
+  "simplyhired",
+  "jobspy",
   "jobright",
 ];
 
@@ -466,10 +550,26 @@ export const SOURCE_PRIORITY = [
   "jobspresso",
   "skipthedrive",
   "arc",
+  "wellfound",
+  "nodesk",
+  "remoterocketship",
+  "dynamitejobs",
+  "justremote",
+  "remote100k",
+  "freelancer",
+  "powertofly",
+  "idealist",
+  "higheredjobs",
+  "workingsolutions",
+  "crossover",
+  "welcometothejungle",
+  "simplyhired",
+  "dribbble",
   "arbeitnow",
   "usajobs",
   "adzuna",
   "googlejobs",
+  "jobspy",
   "jobright",
 ];
 
@@ -504,9 +604,26 @@ export const CSV_EXPORT_ORDER = [
   "adzuna",
   "googlejobs",
   "ziprecruiter",
+  "glassdoor",
   "monster",
   "indeed",
   "careerbuilder",
+  "wellfound",
+  "nodesk",
+  "remoterocketship",
+  "dynamitejobs",
+  "justremote",
+  "remote100k",
+  "freelancer",
+  "powertofly",
+  "idealist",
+  "higheredjobs",
+  "workingsolutions",
+  "crossover",
+  "welcometothejungle",
+  "simplyhired",
+  "dribbble",
+  "jobspy",
 ];
 
 export const CSV_HEADERS = [

@@ -7,6 +7,8 @@
   "scripts": {
     "capture": "node src/capture.js",
     "start": "node src/server.js",
+    "jobspy": "node src/jobspy/search.js",
+    "jobspy:deps": "node scripts/install-jobspy-deps.mjs",
     "jobright:login": "node src/jobright-login.js",
     "dice:login": "node src/dice-login.js",
     "indeed:login": "node src/indeed-login.js",

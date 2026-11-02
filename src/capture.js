@@ -3,8 +3,9 @@
  * Remotive, Jobicy, Remote OK, WWR, Working Nomads, Jobspresso, SkipTheDrive,
  * Arc.dev, Himalayas, Jobgether,
  * Arbeitnow, The Muse, USAJOBS, Adzuna),
- * plus Dice, JobRight, Built In. ZipRecruiter / Monster / CareerBuilder are on
- * when CAPTURE_*=true (Indeed stays off by default). Optional Google Jobs via SerpAPI.
+ * plus Dice, JobRight, Built In, and the JobSpy feeder (Glassdoor / ZipRecruiter /
+ * niche remotes). Playwright ZipRecruiter is skipped when JobSpy covers it.
+ * Indeed stays off by default. Optional Google Jobs via SerpAPI.
  */
 
 import { chromium } from "playwright";
@@ -36,6 +37,7 @@ import { searchArcJobs } from "./arc/search.js";
 import { searchUsajobsJobs } from "./usajobs/search.js";
 import { searchAdzunaJobs } from "./adzuna/search.js";
 import { searchGoogleJobs } from "./googlejobs/search.js";
+import { jobspyCoversSite, searchJobspyJobs } from "./jobspy/search.js";
 import { captureRuleReason, looksSalesforceTitle } from "./filter.js";
 import {
   beginRun,
@@ -112,10 +114,13 @@ function enabledSources() {
   if (config.captureUsajobs) out.push("usajobs");
   if (config.captureAdzuna) out.push("adzuna");
   if (config.captureGooglejobs) out.push("googlejobs");
-  if (config.captureZiprecruiter) out.push("ziprecruiter");
+  if (config.captureZiprecruiter && !jobspyCoversSite("zip_recruiter")) {
+    out.push("ziprecruiter");
+  }
   if (config.captureMonster) out.push("monster");
   if (config.captureIndeed) out.push("indeed");
   if (config.captureCareerbuilder) out.push("careerbuilder");
+  if (config.captureJobspy) out.push("jobspy");
   if (config.captureJobright) out.push("jobright");
   return out;
 }
@@ -194,6 +199,13 @@ export async function runCapture({ skipSlack = false } = {}) {
     }
 
     const feedPromise = collectFeedJobs();
+    // Start JobSpy early — it can take several minutes and overlaps feeds.
+    const jobspyPromise = config.captureJobspy
+      ? searchJobspyJobs().catch((err) => {
+          console.warn(`[jobspy] failed: ${err.message}`);
+          return { jobs: [], ok: false, error: err.message };
+        })
+      : Promise.resolve({ jobs: [], ok: true, skipped: true });
 
     browser = await chromium.launch(browserLaunchOptions(config.headless));
 
@@ -234,7 +246,8 @@ export async function runCapture({ skipSlack = false } = {}) {
       });
     }
 
-    if (config.captureZiprecruiter) {
+    // Prefer JobSpy's ZipRecruiter scraper; Playwright is a fallback only.
+    if (config.captureZiprecruiter && !jobspyCoversSite("zip_recruiter")) {
       await runNamedSource("ziprecruiter", async () => {
         const { jobs, blocked } = await searchZiprecruiterJobs(browser);
         console.log(
@@ -242,6 +255,10 @@ export async function runCapture({ skipSlack = false } = {}) {
         );
         ingestJobs(jobs, runId, counts, newJobs);
       });
+    } else if (config.captureZiprecruiter && jobspyCoversSite("zip_recruiter")) {
+      console.log(
+        "[capture] ziprecruiter: using JobSpy feeder (Playwright skipped)"
+      );
     }
 
     if (config.captureMonster) {
@@ -277,6 +294,16 @@ export async function runCapture({ skipSlack = false } = {}) {
     const feedJobs = await feedPromise;
     if (feedJobs.length) {
       ingestJobs(feedJobs, runId, counts, newJobs);
+    }
+
+    const jobspyResult = await jobspyPromise;
+    if (jobspyResult?.jobs?.length) {
+      console.log(`[capture] jobspy jobs: ${jobspyResult.jobs.length}`);
+      ingestJobs(jobspyResult.jobs, runId, counts, newJobs);
+    } else if (config.captureJobspy && !jobspyResult?.skipped) {
+      console.log(
+        `[capture] jobspy jobs: 0${jobspyResult?.error ? ` (${jobspyResult.error.slice(0, 120)})` : ""}`
+      );
     }
 
     // JobRight last among browser sources (lowest source priority).

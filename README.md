@@ -1,6 +1,6 @@
 # Salesforce Job Capture (multi-source)
 
-Capture **remote Salesforce-ecosystem** jobs from **public APIs first** (Greenhouse / Lever / Ashby boards, Remotive, Jobicy, Remote OK, We Work Remotely, Working Nomads, Himalayas, Jobgether, Arbeitnow, The Muse, USAJOBS, Adzuna), plus Dice, JobRight, Built In, and optional Google Jobs (SerpAPI) **at 5 AM and 5 PM**. Playwright boards **ZipRecruiter / Monster / CareerBuilder** are **on** (may no-op when Cloudflare blocks); **Indeed** stays **off by default**.
+Capture **remote Salesforce-ecosystem** jobs from **public APIs first** (Greenhouse / Lever / Ashby boards, Remotive, Jobicy, Remote OK, We Work Remotely, Working Nomads, Himalayas, Jobgether, Arbeitnow, The Muse, USAJOBS, Adzuna), plus Dice, JobRight, Built In, the **JobSpy feeder** (Glassdoor, ZipRecruiter, niche remotes, ATS discovery), and optional Google Jobs (SerpAPI) **at 5 AM and 5 PM**. Playwright **ZipRecruiter** is skipped when JobSpy covers it; **Monster / CareerBuilder** stay optional; **Indeed** stays **off by default**.
 
 ## What gets saved
 
@@ -32,8 +32,23 @@ Filter (applied to all sources):
 | **Himalayas / Jobgether / Arbeitnow** | Scheduler (public JSON APIs) | No browser. Jobgether’s offer API; Himalayas remote search. Arbeitnow is EU-heavy so few US hits. |
 | **USAJOBS / Adzuna** | Scheduler (public APIs, optional keys) | Federal remote roles (USAJOBS) and US aggregator (Adzuna). Free keys at [developer.usajobs.gov](https://developer.usajobs.gov) and [developer.adzuna.com](https://developer.adzuna.com). Skipped until keys are set. |
 | **Google Jobs** | Scheduler (SerpAPI, optional) | Google has no free Jobs API. Set `SERPAPI_KEY` to enable. |
-| **ZipRecruiter / Monster / CareerBuilder** | Scheduler (Playwright) | **On** (`CAPTURE_*=true`) — search `SEARCH_QUERIES`; may return empty if Cloudflare blocks. |
+| **JobSpy feeder** | Scheduler (Python `salesforce_jobs`) | **On** (`CAPTURE_JOBSPY=true`). Sibling repo `../JobSpy/JobSpy`. Glassdoor + ZipRecruiter + niche remotes + ATS; merges into the same `store.json` / CSV. Full public catalog when `JOBSPY_FULL=true`. |
+| **ZipRecruiter / Monster / CareerBuilder** | Scheduler (Playwright) | ZipRecruiter Playwright is **skipped** when JobSpy covers it. Monster / CareerBuilder may no-op if Cloudflare blocks. |
 | **Indeed** | Scheduler (Playwright) | **Off by default** — set `CAPTURE_INDEED=true` and run `npm run indeed:login` if needed. |
+
+### JobSpy feeder setup
+
+One-time Python deps (uses `download/jobspy-py` so a broken JobSpy `.venv` is fine):
+
+```bash
+npm run jobspy:deps
+```
+
+Optional: set `JOBSPY_PYTHON` to a working interpreter and `JOBSPY_ROOT` if the sibling path differs. Standalone feeder run:
+
+```bash
+npm run jobspy
+```
 
 ### Optional: skip already-applied Dice jobs
 
@@ -129,7 +144,8 @@ Then load `extension/` unpacked in Chrome.
 | `CAPTURE_GOOGLEJOBS` / `SERPAPI_KEY` | Google Jobs via SerpAPI (skipped until a key is set) |
 | `CAPTURE_LEVER` / `CAPTURE_ASHBY` | Company career boards on Lever / Ashby (`true` by default) |
 | `GREENHOUSE_BOARDS` / `LEVER_BOARDS` / `ASHBY_BOARDS` | Comma-separated company board tokens to poll |
-| `CAPTURE_ZIPRECRUITER` / `CAPTURE_MONSTER` / `CAPTURE_CAREERBUILDER` / `CAPTURE_INDEED` | Playwright boards — **off by default** (Cloudflare / empty) |
+| `CAPTURE_JOBSPY` / `JOBSPY_FULL` / `JOBSPY_ROOT` | JobSpy feeder (default on / full catalog). Merges Glassdoor, ZipRecruiter, niche remotes into the CSV |
+| `CAPTURE_ZIPRECRUITER` / `CAPTURE_MONSTER` / `CAPTURE_CAREERBUILDER` / `CAPTURE_INDEED` | Playwright boards — ZipRecruiter skipped when JobSpy covers it; Indeed off by default |
 | `JOBICY_TAGS` | Jobicy API tags (default `salesforce,crm,mulesoft,apex`) |
 | `SEARCH_QUERIES` | Comma-separated Dice/Remotive/Himalayas product searches (default includes Health Cloud, Data Cloud, Marketing Cloud, Service Cloud, Agentforce, OmniStudio, Salesforce CPQ). Built In and Jobspresso use `ROLE_TITLES` instead |
 | `ROLE_TITLES` | Comma-separated role seeds for Built In, Jobspresso, and JobRight (32 Salesforce role titles by default). A bare "Salesforce" query is not used on those boards |
