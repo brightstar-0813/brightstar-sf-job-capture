@@ -1,6 +1,6 @@
 # Salesforce Job Capture (multi-source)
 
-Capture **remote Salesforce-ecosystem** jobs from **public APIs first** (Greenhouse / Lever / Ashby boards, Remotive, Jobicy, Remote OK, We Work Remotely, Working Nomads, Himalayas, Jobgether, Arbeitnow, The Muse, USAJOBS, Adzuna), plus Dice, JobRight, Built In, the **JobSpy feeder** (Glassdoor, ZipRecruiter, niche remotes, ATS discovery), and optional Google Jobs (SerpAPI) **at 5 AM and 5 PM**. Playwright **ZipRecruiter** is skipped when JobSpy covers it; **Monster / CareerBuilder** stay optional; **Indeed** stays **off by default**.
+Capture **remote Salesforce-ecosystem** jobs from **public APIs first** (Greenhouse / Lever / Ashby boards, Remotive, Jobicy, Remote OK, We Work Remotely, Working Nomads, Himalayas, Jobgether, Arbeitnow, The Muse, USAJOBS, Adzuna), plus Dice, JobRight, Built In, Playwright **ZipRecruiter**, and optional Google Jobs (SerpAPI) **at 5 AM and 5 PM**. **Monster / CareerBuilder / Indeed** stay **off by default**.
 
 ## What gets saved
 
@@ -32,23 +32,11 @@ Filter (applied to all sources):
 | **Himalayas / Jobgether / Arbeitnow** | Scheduler (public JSON APIs) | No browser. Jobgether’s offer API; Himalayas remote search. Arbeitnow is EU-heavy so few US hits. |
 | **USAJOBS / Adzuna** | Scheduler (public APIs, optional keys) | Federal remote roles (USAJOBS) and US aggregator (Adzuna). Free keys at [developer.usajobs.gov](https://developer.usajobs.gov) and [developer.adzuna.com](https://developer.adzuna.com). Skipped until keys are set. |
 | **Google Jobs** | Scheduler (SerpAPI, optional) | Google has no free Jobs API. Set `SERPAPI_KEY` to enable. |
-| **JobSpy feeder** | Scheduler (Python `salesforce_jobs`) | **On** (`CAPTURE_JOBSPY=true`). Sibling repo `../JobSpy/JobSpy`. Glassdoor + ZipRecruiter + niche remotes + ATS; merges into the same `store.json` / CSV. Full public catalog when `JOBSPY_FULL=true`. |
-| **ZipRecruiter / Monster / CareerBuilder** | Scheduler (Playwright) | ZipRecruiter Playwright is **skipped** when JobSpy covers it. Monster / CareerBuilder may no-op if Cloudflare blocks. |
+| **ZipRecruiter** | Scheduler (Playwright) | **On by default** (`CAPTURE_ZIPRECRUITER=true`). May no-op if Cloudflare blocks. |
+| **Monster / CareerBuilder** | Scheduler (Playwright) | **Off by default** — often empty or bot-blocked in headless. |
 | **Indeed** | Scheduler (Playwright) | **Off by default** — set `CAPTURE_INDEED=true` and run `npm run indeed:login` if needed. |
 
-### JobSpy feeder setup
-
-One-time Python deps (uses `download/jobspy-py` so a broken JobSpy `.venv` is fine):
-
-```bash
-npm run jobspy:deps
-```
-
-Optional: set `JOBSPY_PYTHON` to a working interpreter and `JOBSPY_ROOT` if the sibling path differs. Standalone feeder run:
-
-```bash
-npm run jobspy
-```
+Glassdoor and other JobSpy-only niche remotes are **not scraped** (legacy `source` labels may still appear in `store.json` / CSV from older runs).
 
 ### Indeed (disabled by default)
 
@@ -120,8 +108,7 @@ Then load `extension/` unpacked in Chrome.
 | `CAPTURE_GOOGLEJOBS` / `SERPAPI_KEY` | Google Jobs via SerpAPI (skipped until a key is set) |
 | `CAPTURE_LEVER` / `CAPTURE_ASHBY` | Company career boards on Lever / Ashby (`true` by default) |
 | `GREENHOUSE_BOARDS` / `LEVER_BOARDS` / `ASHBY_BOARDS` | Comma-separated company board tokens to poll |
-| `CAPTURE_JOBSPY` / `JOBSPY_FULL` / `JOBSPY_ROOT` | JobSpy feeder (default on / full catalog). Merges Glassdoor, ZipRecruiter, niche remotes into the CSV |
-| `CAPTURE_ZIPRECRUITER` / `CAPTURE_MONSTER` / `CAPTURE_CAREERBUILDER` / `CAPTURE_INDEED` | Playwright boards — ZipRecruiter skipped when JobSpy covers it; Indeed off by default |
+| `CAPTURE_ZIPRECRUITER` / `CAPTURE_MONSTER` / `CAPTURE_CAREERBUILDER` / `CAPTURE_INDEED` | Playwright boards — ZipRecruiter on by default; Monster / CareerBuilder / Indeed off by default |
 | `JOBICY_TAGS` | Jobicy API tags (default `salesforce,crm,mulesoft,apex`) |
 | `SEARCH_QUERIES` | Comma-separated Dice/Remotive/Himalayas product searches (default includes Health Cloud, Data Cloud, Marketing Cloud, Service Cloud, Agentforce, OmniStudio, Salesforce CPQ). Built In and Jobspresso use `ROLE_TITLES` instead |
 | `ROLE_TITLES` | Comma-separated role seeds for Built In, Jobspresso, and JobRight (32 Salesforce role titles by default). A bare "Salesforce" query is not used on those boards |
@@ -129,6 +116,7 @@ Then load `extension/` unpacked in Chrome.
 | `JOBRIGHT_TITLES` | Optional override of the JobRight seed list. When unset, JobRight uses `ROLE_TITLES` |
 | `JOBRIGHT_MAX_PAGES` | JobRight pages per seed title, 20 results each (default `5`) |
 | `EXCLUDE_BID_TRACKING_SHEET` / `BID_TRACKING_SHEET_URL` | Skip jobs whose Link is already on the bid-tracking sheet |
+| `SYNC_JOBS_SHEET` / `JOBS_SHEET_WEBAPP_URL` / `JOBS_SHEET_URL` / `JOBS_SHEET_NAME` | Append **new** jobs to the `US-SF-Jobs` tab via the Brightstar Apps Script web app (`Title`, `Company`, `Link`, `Salary`, `Date`, Status=`Ready`, Bid mode=`Auto bid`). Link duplicates are skipped. Source/JD stay in local CSV only |
 | `CSV_PREFIX_DICE` / `CSV_PREFIX_JOBRIGHT` | Dated filename prefixes (legacy) |
 | Per-source latest CSVs | `download/NN_{source}_jobs_latest.csv` (fixed sequence) plus Workday URL view; each file has a `seq` column |
 | `DATA_DIR` | Output folder (`download`) |

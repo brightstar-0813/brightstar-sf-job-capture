@@ -1,11 +1,9 @@
 /**
  * Capture Salesforce jobs — public APIs/feeds first (Greenhouse, Lever, Ashby,
  * Remotive, Jobicy, Remote OK, WWR, Working Nomads, Jobspresso, SkipTheDrive,
- * Arc.dev, Himalayas, Jobgether,
- * Arbeitnow, The Muse, USAJOBS, Adzuna),
- * plus Dice, JobRight, Built In, and the JobSpy feeder (Glassdoor / ZipRecruiter /
- * niche remotes). Playwright ZipRecruiter is skipped when JobSpy covers it.
- * Indeed stays off by default. Optional Google Jobs via SerpAPI.
+ * Arc.dev, Himalayas, Jobgether, Arbeitnow, The Muse, USAJOBS, Adzuna),
+ * plus Dice, JobRight, Built In, and Playwright ZipRecruiter.
+ * Monster / CareerBuilder / Indeed stay off by default. Optional Google Jobs via SerpAPI.
  */
 
 import { chromium } from "playwright";
@@ -37,7 +35,6 @@ import { searchArcJobs } from "./arc/search.js";
 import { searchUsajobsJobs } from "./usajobs/search.js";
 import { searchAdzunaJobs } from "./adzuna/search.js";
 import { searchGoogleJobs } from "./googlejobs/search.js";
-import { jobspyCoversSite, searchJobspyJobs } from "./jobspy/search.js";
 import { captureRuleReason, looksSalesforceTitle } from "./filter.js";
 import {
   beginRun,
@@ -54,6 +51,7 @@ import {
   loadBidTrackingExclusions,
   isExcludedBySheet,
 } from "./sheet-exclude.js";
+import { appendJobsToSheet } from "./sheet-append.js";
 import { notifyCaptureComplete } from "./slack.js";
 
 let running = false;
@@ -109,13 +107,10 @@ function enabledSources() {
   if (config.captureUsajobs) out.push("usajobs");
   if (config.captureAdzuna) out.push("adzuna");
   if (config.captureGooglejobs) out.push("googlejobs");
-  if (config.captureZiprecruiter && !jobspyCoversSite("zip_recruiter")) {
-    out.push("ziprecruiter");
-  }
+  if (config.captureZiprecruiter) out.push("ziprecruiter");
   if (config.captureMonster) out.push("monster");
   if (config.captureIndeed) out.push("indeed");
   if (config.captureCareerbuilder) out.push("careerbuilder");
-  if (config.captureJobspy) out.push("jobspy");
   if (config.captureJobright) out.push("jobright");
   return out;
 }
@@ -192,13 +187,6 @@ export async function runCapture({ skipSlack = false } = {}) {
     }
 
     const feedPromise = collectFeedJobs();
-    // Start JobSpy early — it can take several minutes and overlaps feeds.
-    const jobspyPromise = config.captureJobspy
-      ? searchJobspyJobs().catch((err) => {
-          console.warn(`[jobspy] failed: ${err.message}`);
-          return { jobs: [], ok: false, error: err.message };
-        })
-      : Promise.resolve({ jobs: [], ok: true, skipped: true });
 
     browser = await chromium.launch(browserLaunchOptions(config.headless));
 
@@ -228,8 +216,7 @@ export async function runCapture({ skipSlack = false } = {}) {
       });
     }
 
-    // Prefer JobSpy's ZipRecruiter scraper; Playwright is a fallback only.
-    if (config.captureZiprecruiter && !jobspyCoversSite("zip_recruiter")) {
+    if (config.captureZiprecruiter) {
       await runNamedSource("ziprecruiter", async () => {
         const { jobs, blocked } = await searchZiprecruiterJobs(browser);
         console.log(
@@ -237,10 +224,6 @@ export async function runCapture({ skipSlack = false } = {}) {
         );
         ingestJobs(jobs, runId, counts, newJobs);
       });
-    } else if (config.captureZiprecruiter && jobspyCoversSite("zip_recruiter")) {
-      console.log(
-        "[capture] ziprecruiter: using JobSpy feeder (Playwright skipped)"
-      );
     }
 
     if (config.captureMonster) {
@@ -276,16 +259,6 @@ export async function runCapture({ skipSlack = false } = {}) {
     const feedJobs = await feedPromise;
     if (feedJobs.length) {
       ingestJobs(feedJobs, runId, counts, newJobs);
-    }
-
-    const jobspyResult = await jobspyPromise;
-    if (jobspyResult?.jobs?.length) {
-      console.log(`[capture] jobspy jobs: ${jobspyResult.jobs.length}`);
-      ingestJobs(jobspyResult.jobs, runId, counts, newJobs);
-    } else if (config.captureJobspy && !jobspyResult?.skipped) {
-      console.log(
-        `[capture] jobspy jobs: 0${jobspyResult?.error ? ` (${jobspyResult.error.slice(0, 120)})` : ""}`
-      );
     }
 
     // JobRight last among browser sources (lowest source priority).
@@ -344,6 +317,24 @@ export async function runCapture({ skipSlack = false } = {}) {
       console.log(`[capture] per-source csv: ${parts}`);
     }
 
+    let sheetOut = null;
+    if (config.syncJobsSheet) {
+      try {
+        sheetOut = await appendJobsToSheet(newJobs);
+        if (sheetOut.skipped) {
+          console.log(
+            `[sheet] sync skipped${sheetOut.error ? ` (${sheetOut.error})` : ""}`
+          );
+        } else {
+          console.log(
+            `[sheet] ${sheetOut.sheetName}: appended=${sheetOut.appended} duplicate=${sheetOut.duplicate} failed=${sheetOut.failed}`
+          );
+        }
+      } catch (sheetErr) {
+        console.warn(`[sheet] ${sheetErr.message}`);
+      }
+    }
+
     if (!skipSlack) {
       try {
         await notifyCaptureComplete({
@@ -368,6 +359,7 @@ export async function runCapture({ skipSlack = false } = {}) {
       latestPath: csvOut.latestPath,
       csvCount: csvOut.count,
       lastCsv: getMeta("last_csv_path"),
+      sheet: sheetOut,
     };
   } catch (err) {
     const error = err.message || String(err);

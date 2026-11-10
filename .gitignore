@@ -1,5 +1,4 @@
 node_modules/
-.venv-jobspy/
 data/
 download/
 !.gitkeep

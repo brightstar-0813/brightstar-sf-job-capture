@@ -102,8 +102,8 @@ export const config = {
   captureJobright: bool("CAPTURE_JOBRIGHT", true),
   captureBuiltin: bool("CAPTURE_BUILTIN", true),
   captureGreenhouse: bool("CAPTURE_GREENHOUSE", true),
-  /** Often Cloudflare-blocked in headless — off by default (prefer public APIs). */
-  captureZiprecruiter: bool("CAPTURE_ZIPRECRUITER", false),
+  /** Playwright ZipRecruiter — on by default; may no-op if Cloudflare blocks. */
+  captureZiprecruiter: bool("CAPTURE_ZIPRECRUITER", true),
   /** Often empty/blocked in headless — off by default (prefer public APIs). */
   captureMonster: bool("CAPTURE_MONSTER", false),
   /** Indeed scrape disabled — set CAPTURE_INDEED=true to re-enable. */
@@ -145,47 +145,6 @@ export const config = {
   serpapiKey: String(process.env.SERPAPI_KEY || "").trim(),
   captureLever: bool("CAPTURE_LEVER", true),
   captureAshby: bool("CAPTURE_ASHBY", true),
-  /**
-   * JobSpy / salesforce_jobs feeder (sibling Python package). Pulls Glassdoor,
-   * ZipRecruiter, niche remotes, and ATS boards Node is weak on, then merges
-   * into store.json / jobs_latest.csv. Off only if CAPTURE_JOBSPY=false.
-   */
-  captureJobspy: bool("CAPTURE_JOBSPY", true),
-  jobspyRoot: path.resolve(
-    root,
-    process.env.JOBSPY_ROOT ||
-      path.join("..", "JobSpy", "JobSpy")
-  ),
-  jobspyPython: String(process.env.JOBSPY_PYTHON || "").trim(),
-  /** Site-packages dir for JobSpy deps when the sibling .venv is broken. */
-  jobspyPythonPath: path.resolve(
-    root,
-    process.env.JOBSPY_PYTHONPATH || path.join("download", "jobspy-py")
-  ),
-  jobspyWorkDir: path.resolve(
-    root,
-    process.env.JOBSPY_WORK_DIR || path.join("download", "jobspy")
-  ),
-  jobspyTimeoutMs: Math.max(
-    60_000,
-    Number(process.env.JOBSPY_TIMEOUT_MS || 45 * 60 * 1000)
-  ),
-  jobspyHoursOld: Math.max(0, Number(process.env.JOBSPY_HOURS_OLD || 0)),
-  jobspyResultsPerSource: Math.max(
-    25,
-    Number(process.env.JOBSPY_RESULTS_PER_SOURCE || 300)
-  ),
-  jobspyMaxPages: Math.max(1, Number(process.env.JOBSPY_MAX_PAGES || 8)),
-  jobspyMaxRequestsPerSource: Math.max(
-    20,
-    Number(process.env.JOBSPY_MAX_REQUESTS_PER_SOURCE || 100)
-  ),
-  jobspyBrowserChannel: String(
-    process.env.JOBSPY_BROWSER_CHANNEL || "msedge"
-  ).trim(),
-  /** Use the full public JobSpy site list (slower; max coverage). */
-  jobspyFull: bool("JOBSPY_FULL", true),
-  jobspySites: csvList("JOBSPY_SITES", []),
   /**
    * Greenhouse board tokens (boards.greenhouse.io/{token}). No global search —
    * we poll Salesforce ISVs/partners plus employers that commonly hire
@@ -452,6 +411,20 @@ export const config = {
   ).trim(),
   bidTrackingSheetGid: String(process.env.BID_TRACKING_SHEET_GID || "0").trim(),
   excludeBidTrackingSheet: bool("EXCLUDE_BID_TRACKING_SHEET", true),
+  /**
+   * Append newly captured jobs to a Google Sheet tab via the Brightstar Apps
+   * Script web app (append + link dedupe). No Google API keys required.
+   */
+  syncJobsSheet: bool("SYNC_JOBS_SHEET", true),
+  jobsSheetWebappUrl: String(
+    process.env.JOBS_SHEET_WEBAPP_URL ||
+      "https://script.google.com/macros/s/AKfycbwZFDSrW3ZIyWuRZrXDU8DFN8Ktmr1qB8iy4aBRBB7bJ9DJyDeK9uOnZbrPt9YUFKg2/exec"
+  ).trim(),
+  jobsSheetUrl: String(
+    process.env.JOBS_SHEET_URL ||
+      "https://docs.google.com/spreadsheets/d/1UCHuLKjnEDvH-Q8NYBvspmyts0evq2lFT5ZQF_djmcE/edit?gid=1039755249#gid=1039755249"
+  ).trim(),
+  jobsSheetName: String(process.env.JOBS_SHEET_NAME || "US-SF-Jobs").trim(),
   jobrightMaxPages: Math.max(1, Number(process.env.JOBRIGHT_MAX_PAGES || process.env.MAX_PAGES || 5)),
   /**
    * Role-title fan-out for Built In, Jobspresso, and JobRight. A bare
