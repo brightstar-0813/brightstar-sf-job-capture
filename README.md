@@ -116,7 +116,7 @@ Then load `extension/` unpacked in Chrome.
 | `JOBRIGHT_TITLES` | Optional override of the JobRight seed list. When unset, JobRight uses `ROLE_TITLES` |
 | `JOBRIGHT_MAX_PAGES` | JobRight pages per seed title, 20 results each (default `5`) |
 | `EXCLUDE_BID_TRACKING_SHEET` / `BID_TRACKING_SHEET_URL` | Skip jobs whose Link is already on the bid-tracking sheet |
-| `SYNC_JOBS_SHEET` / `JOBS_SHEET_WEBAPP_URL` / `JOBS_SHEET_URL` / `JOBS_SHEET_NAME` | Append **new** jobs to the `US-SF-Jobs` tab via the Brightstar Apps Script web app (`Title`, `Company`, `Link`, `Salary`, `Date`, Status=`Ready`, Bid mode=`Auto bid`). Link duplicates are skipped. Source/JD stay in local CSV only |
+| `SYNC_JOBS_SHEET` / `JOBS_SHEET_WEBAPP_URL` / `JOBS_SHEET_URL` / `JOBS_SHEET_NAME` | Append **new** jobs to the `US-SF-Jobs` warehouse tab (`Role`, `Company`, `Link`, `JD`, `Salary`). No Ready/Auto bid. Redeploy [`apps-script/Code.gs`](apps-script/Code.gs) so `appendWarehouse` is live. Link duplicates are skipped |
 | `CSV_PREFIX_DICE` / `CSV_PREFIX_JOBRIGHT` | Dated filename prefixes (legacy) |
 | Per-source latest CSVs | `download/NN_{source}_jobs_latest.csv` (fixed sequence) plus Workday URL view; each file has a `seq` column |
 | `DATA_DIR` | Output folder (`download`) |

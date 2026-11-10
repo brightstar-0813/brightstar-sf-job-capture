@@ -1,17 +1,21 @@
 /**
- * Append newly captured jobs to a Google Sheet tab via the Brightstar Apps
- * Script web app (append + link-based duplicate check).
+ * Append newly captured jobs to the jobs-warehouse Google Sheet tab
+ * (US-SF-Jobs) via the Brightstar Apps Script web app.
  *
- * POST body fields (text/plain JSON):
- *   jobTitle, companyName, jobLink, salary, applicationDate, status, bidMode
+ * Warehouse columns: Role | Company | Link | JD | Salary
+ * (no Status / Bid mode — those stay on bid-tracker profile tabs)
  *
- * Sheet columns: No | Date | Title | Company | Link | Salary | Status | Bid mode
+ * POST action: "appendWarehouse"
+ * Fields: jobTitle, companyName, jobLink, jd, salary
  */
 
 import { config } from "./config.js";
 
 const DEFAULT_WEBAPP_URL =
   "https://script.google.com/macros/s/AKfycbwZFDSrW3ZIyWuRZrXDU8DFN8Ktmr1qB8iy4aBRBB7bJ9DJyDeK9uOnZbrPt9YUFKg2/exec";
+
+/** Sheets cells max ~50k; keep headroom. */
+const JD_MAX_CHARS = 45000;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -64,28 +68,21 @@ export function formatSalary(job) {
   return range;
 }
 
-function todayMdY() {
-  const d = new Date();
-  return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
+export function formatJd(job) {
+  const raw = String(job?.description || job?.jd || "").trim();
+  if (!raw) return "";
+  if (raw.length <= JD_MAX_CHARS) return raw;
+  return `${raw.slice(0, JD_MAX_CHARS - 1)}…`;
 }
 
-function formatApplicationDate(raw) {
-  const s = String(raw || "").trim();
-  if (!s) return todayMdY();
-  const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return s;
-  return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
-}
-
+/** Warehouse payload — Role, Company, Link, JD, Salary. */
 export function jobToSheetPayload(job) {
   return {
     jobTitle: String(job?.title || "").trim(),
     companyName: String(job?.organization || "").trim(),
     jobLink: String(job?.url || "").trim(),
+    jd: formatJd(job),
     salary: formatSalary(job),
-    applicationDate: formatApplicationDate(job?.date_posted),
-    status: "Ready",
-    bidMode: "Auto bid",
   };
 }
 
@@ -127,8 +124,46 @@ async function postWithRetry(urlString, payload, { retries = 3 } = {}) {
 }
 
 /**
- * Append jobs to the configured sheet tab. Soft-fails: never throws for
- * sheet/network errors; returns counts instead.
+ * Clear US-SF-Jobs and write warehouse headers (Role|Company|Link|JD|Salary).
+ * Requires Apps Script with action replaceWarehouse (redeploy Code.gs).
+ */
+export async function resetWarehouseSheet() {
+  const webappUrl = String(config.jobsSheetWebappUrl || DEFAULT_WEBAPP_URL).trim();
+  const spreadsheetId = spreadsheetIdFromUrl(config.jobsSheetUrl);
+  const sheetName = String(config.jobsSheetName || "US-SF-Jobs").trim();
+  if (!webappUrl || !spreadsheetId) {
+    return {
+      ok: false,
+      error: !webappUrl
+        ? "JOBS_SHEET_WEBAPP_URL is empty"
+        : "Could not parse spreadsheetId from JOBS_SHEET_URL",
+    };
+  }
+  try {
+    const { status, body, json } = await postWithRetry(webappUrl, {
+      action: "replaceWarehouse",
+      spreadsheetId,
+      sheetName,
+      rows: [],
+    });
+    if (!json || json.ok === false) {
+      const err =
+        json?.error || (body && body.slice(0, 300)) || `HTTP ${status}`;
+      return { ok: false, error: err, sheetName };
+    }
+    return {
+      ok: true,
+      sheetName: json.sheetName || sheetName,
+      headers: json.headers || ["Role", "Company", "Link", "JD", "Salary"],
+    };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err), sheetName };
+  }
+}
+
+/**
+ * Append jobs to the configured warehouse sheet tab. Soft-fails: never throws
+ * for sheet/network errors; returns counts instead.
  * @param {object[]} jobs
  * @param {{ force?: boolean }} [opts] force=true ignores SYNC_JOBS_SHEET=false
  */
@@ -180,7 +215,7 @@ export async function appendJobsToSheet(jobs = [], opts = {}) {
 
     try {
       const { status, body, json } = await postWithRetry(webappUrl, {
-        action: "append",
+        action: "appendWarehouse",
         spreadsheetId,
         sheetName,
         ...fields,
