@@ -189,15 +189,18 @@ function appendWarehouse_(sheet, data, jobTitle, companyName, jobLink) {
     throw new Error("Refusing to append an empty row (need title, company, or link).");
   }
   ensureWarehouseLayout_(sheet);
-  if (jobLink && linkExists_(sheet, jobLink)) {
-    var dupRow = findRowByLink_(sheet, jobLink);
-    return json_({
-      ok: true,
-      duplicate: true,
-      reason: "link",
-      sheetName: sheet.getName(),
-      row: dupRow > 0 ? dupRow : 0
-    });
+  // Only match the Link column — scanning JD false-positives on URLs in descriptions.
+  if (jobLink) {
+    var dupRow = findWarehouseLinkRow_(sheet, jobLink);
+    if (dupRow > 0) {
+      return json_({
+        ok: true,
+        duplicate: true,
+        reason: "link",
+        sheetName: sheet.getName(),
+        row: dupRow
+      });
+    }
   }
   sheet.appendRow(buildWarehouseRow_(data));
   return json_({
@@ -207,6 +210,23 @@ function appendWarehouse_(sheet, data, jobTitle, companyName, jobLink) {
     sheetName: sheet.getName(),
     row: sheet.getLastRow()
   });
+}
+
+/** Warehouse dedupe: exact normalized match on Link column only (ignore JD body URLs). */
+function findWarehouseLinkRow_(sheet, jobLink) {
+  var target = normalizeLink_(jobLink);
+  if (!target) return -1;
+  var values = sheet.getDataRange().getValues();
+  if (!values || !values.length) return -1;
+  var hasHeader = rowLooksLikeHeader_(values[0]);
+  var start = hasHeader ? 1 : 0;
+  var linkCol = hasHeader ? linkColumnIndex_(values[0]) : 2;
+  for (var r = start; r < values.length; r++) {
+    var cell = String((values[r] || [])[linkCol] || "").trim();
+    if (!cell) continue;
+    if (normalizeLink_(cell) === target) return r + 1;
+  }
+  return -1;
 }
 
 /**
