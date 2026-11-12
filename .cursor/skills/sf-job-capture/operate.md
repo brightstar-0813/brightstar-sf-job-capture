@@ -77,13 +77,16 @@ Requires live Apps Script deployment with `appendWarehouse` / `replaceWarehouse`
 2. `npm run indeed:login` once (headed Cloudflare).
 3. `npm run capture`.
 
-## Chrome extension (optional)
+## Chrome extension DOM path (parallel to Node)
 
 1. `npm start` (or scheduled API) on `127.0.0.1:3847`.
-2. Load `extension/` unpacked in Chrome (logged into JobRight).
-3. Toolbar click or alarms → scrape → `POST /api/ingest` with `trusted: true`.
+2. Load `extension/` unpacked in Chrome; stay signed in on the boards you enable.
+3. Open the toolbar **popup** → check sources (Indeed / Zip / Monster / CareerBuilder / JobRight) → **Start**.
+4. Options page: queries, max pages, schedule hours, dry-run, bid-tracker exclude.
+5. On CAPTCHA / login / Cloudflare: badge `!` → finish challenge → **Resume**. Offline API → jobs buffer; use **Flush buffer**.
+6. Or queue via `POST /api/extension/capture` `{ "sources": ["indeed","jobright"] }` (poll ~1 min).
 
-Scheduled capture already uses JobRight HTTP without the extension. Extension is a parallel session-based path.
+Node scheduled capture (feeds / Playwright / JobRight `/swan`) is unchanged and independent. Prefer extension for login-gated boards; keep Node `CAPTURE_INDEED` / Monster / CB off if you only want the extension path for those.
 
 ## Diagnose empty / failing boards
 

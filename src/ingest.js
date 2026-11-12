@@ -1,6 +1,6 @@
 /**
- * Ingest jobs from Chrome extension logged-in sessions (JobRight).
- * LinkedIn is not a capture source.
+ * Ingest jobs from Chrome extension logged-in sessions.
+ * LinkedIn is not a capture source. Works for jobright + DOM boards.
  */
 
 import { matchesCaptureRule } from "./filter.js";
@@ -15,10 +15,19 @@ import {
 } from "./store.js";
 import { notifyCaptureComplete } from "./slack.js";
 import { config } from "./config.js";
+import {
+  loadBidTrackingExclusions,
+  isExcludedBySheet,
+} from "./sheet-exclude.js";
 
 /**
  * @param {object[]} jobs
- * @param {{ source?: string, skipSlack?: boolean }} [opts]
+ * @param {{
+ *   source?: string,
+ *   skipSlack?: boolean,
+ *   trusted?: boolean,
+ *   excludeBidTracking?: boolean,
+ * }} [opts]
  */
 export async function ingestJobsPayload(jobs, opts = {}) {
   const source = String(opts.source || "jobright").toLowerCase();
@@ -42,6 +51,17 @@ export async function ingestJobsPayload(jobs, opts = {}) {
     };
   }
 
+  let bidExclusions = null;
+  const wantBidExclude =
+    opts.excludeBidTracking !== false && config.excludeBidTrackingSheet;
+  if (wantBidExclude) {
+    try {
+      bidExclusions = await loadBidTrackingExclusions();
+    } catch (err) {
+      console.warn(`[ingest/sheet] ${err.message}`);
+    }
+  }
+
   for (const raw of list) {
     const job = {
       ...raw,
@@ -53,6 +73,10 @@ export async function ingestJobsPayload(jobs, opts = {}) {
       continue;
     }
     if (String(job.source || "").toLowerCase() === "linkedin") {
+      counts.skippedCount += 1;
+      continue;
+    }
+    if (bidExclusions?.ok && isExcludedBySheet(job, bidExclusions)) {
       counts.skippedCount += 1;
       continue;
     }
@@ -107,5 +131,6 @@ export async function ingestJobsPayload(jobs, opts = {}) {
     received: list.length,
     files,
     lastCsv: getMeta("last_csv_path"),
+    bidExcluded: !!bidExclusions?.ok,
   };
 }

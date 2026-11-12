@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SF Job Capture</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Salesforce Job Capture</h1>
+      <p>Extension DOM path — Node API capture stays separate</p>
+    </header>
+
+    <section>
+      <div class="note">
+        Node feeds / Playwright / JobRight <code>/swan</code> still run via
+        <code>npm start</code> or Task Scheduler. This popup only controls the
+        logged-in Chrome extension scrapers.
+      </div>
+    </section>
+
+    <section>
+      <div class="sources" id="sources"></div>
+    </section>
+
+    <section class="actions">
+      <button id="btnStart" type="button">Start</button>
+      <button id="btnStop" class="danger" type="button" disabled>Stop</button>
+      <button id="btnResume" class="warn" type="button" disabled>Resume</button>
+      <button id="btnOpen" class="secondary" type="button" disabled>
+        Open site
+      </button>
+      <button id="btnFlush" class="secondary" type="button">Flush buffer</button>
+    </section>
+
+    <section class="status" id="status">
+      <div class="row">
+        <span class="label">State</span><span id="stState">idle</span>
+      </div>
+      <div class="row">
+        <span class="label">Source</span><span id="stSource">—</span>
+      </div>
+      <div class="row">
+        <span class="label">Progress</span><span id="stProgress">—</span>
+      </div>
+      <div class="row">
+        <span class="label">Last result</span><span id="stLast">—</span>
+      </div>
+      <div class="row">
+        <span class="label">Buffered</span><span id="stBuffer">0</span>
+      </div>
+      <div class="need-user" id="needUser">
+        <strong>Action needed:</strong>
+        <span id="needReason"></span>
+      </div>
+    </section>
+
+    <footer>
+      <a href="options.html" target="_blank">Options</a>
+      · API
+      <a href="http://127.0.0.1:3847/api/health" target="_blank">health</a>
+    </footer>
+
+    <script src="lib/protocol.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

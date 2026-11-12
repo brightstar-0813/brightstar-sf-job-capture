@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SF Job Capture — Options</title>
+    <link rel="stylesheet" href="popup.css" />
+    <style>
+      body {
+        width: auto;
+        max-width: 720px;
+        margin: 0 auto;
+      }
+      textarea,
+      input[type="text"],
+      input[type="number"] {
+        width: 100%;
+        background: var(--panel);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 8px;
+        font: inherit;
+      }
+      .field {
+        margin: 10px 0;
+      }
+      .field label {
+        display: block;
+        margin-bottom: 4px;
+        color: var(--muted);
+      }
+      .row-inline {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      .row-inline .field {
+        flex: 1;
+        min-width: 140px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Extension capture options</h1>
+      <p>
+        These settings apply only to the Chrome extension DOM path. Node
+        <code>.env</code> still controls API / Playwright capture.
+      </p>
+    </header>
+
+    <section>
+      <div class="field">
+        <label for="queries">Search queries (Indeed / Zip / Monster / CB)</label>
+        <textarea id="queries" rows="4"></textarea>
+      </div>
+      <div class="field">
+        <label for="roleTitles">JobRight role titles</label>
+        <textarea id="roleTitles" rows="5"></textarea>
+      </div>
+      <div class="row-inline">
+        <div class="field">
+          <label for="maxPages">Max pages per query</label>
+          <input id="maxPages" type="number" min="1" max="12" />
+        </div>
+        <div class="field">
+          <label for="recentDays">Recent days</label>
+          <input id="recentDays" type="number" min="1" max="30" />
+        </div>
+        <div class="field">
+          <label for="runHours">Schedule hours (24h, comma)</label>
+          <input id="runHours" type="text" />
+        </div>
+      </div>
+      <div class="sources" style="margin-top: 8px">
+        <label class="source"
+          ><input id="scheduleEnabled" type="checkbox" /> Scheduled
+          runs</label
+        >
+        <label class="source"
+          ><input id="autoCloseTabs" type="checkbox" /> Auto-close scrape
+          tabs</label
+        >
+        <label class="source"
+          ><input id="dryRun" type="checkbox" /> Dry run (no ingest)</label
+        >
+        <label class="source"
+          ><input id="excludeBidTracking" type="checkbox" /> Exclude bid-tracker
+          links</label
+        >
+      </div>
+      <div class="actions" style="margin-top: 12px">
+        <button id="btnSave" type="button">Save</button>
+        <button id="btnReset" class="secondary" type="button">
+          Reset defaults
+        </button>
+      </div>
+      <p id="saved" style="color: var(--accent); display: none">Saved.</p>
+    </section>
+
+    <script src="lib/protocol.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>

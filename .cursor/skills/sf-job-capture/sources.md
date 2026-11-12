@@ -40,10 +40,25 @@ Registration is **manual** in `src/capture.js` (imports + `if (config.captureX)`
 - **Playwright (sequential)**: Built In → Dice (+ detail) → ZipRecruiter → Monster → Indeed → CareerBuilder.
 - **JobRight**: after feeds merge; lowest source priority.
 
+## Extension DOM path (parallel)
+
+Logged-in Chrome MV3 under `extension/` — does **not** replace Node adapters. User selects sources in the popup / Options / `POST /api/extension/capture`.
+
+| Source id | Adapter | Mechanism |
+|-----------|---------|-----------|
+| `indeed` | `extension/adapters/indeed-content.js` | DOM mosaic/cards + detail pane; background paginates |
+| `ziprecruiter` | `extension/adapters/ziprecruiter-content.js` | DOM listing + detail fetch; Cloudflare → need-user |
+| `monster` | `extension/adapters/monster-content.js` | DOM listing + detail fetch |
+| `careerbuilder` | `extension/adapters/careerbuilder-content.js` | DOM listing + detail fetch |
+| `jobright` | `extension/adapters/jobright-content.js` | In-page `/swan` (same as before); optional alongside DOM boards |
+
+Orchestrator: `extension/background.js`. Shared protocol/filter: `extension/lib/`. Final filter still `matchesCaptureRule` via `POST /api/ingest`.
+
 ## Not wired
 
 - `src/jobspy/` — standalone; niche remotes are not scraped.
 - Legacy ids still in `SOURCE_IDS` / `SOURCE_PRIORITY` for CSV/status compatibility (`glassdoor`, `wellfound`, …).
+- LinkedIn — never scraped (API or extension).
 
 ## Adapter contract
 

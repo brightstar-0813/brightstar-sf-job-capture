@@ -97,25 +97,40 @@ app.post("/api/run", async (_req, res) => {
   runCapture().catch((err) => console.error("[api/run]", err));
 });
 
-/**
- * Queue a headless-extension JobRight capture.
- * The extension polls GET /api/extension/poll about once a minute, or run
- * immediately by clicking the toolbar icon after queuing.
- * Body: { sources?: ("jobright")[] } — LinkedIn is not captured.
- */
-app.post("/api/extension/capture", (req, res) => {
-  const raw = Array.isArray(req.body?.sources) ? req.body.sources : ["jobright"];
-  const sources = [
+const EXTENSION_SOURCES = new Set([
+  "jobright",
+  "indeed",
+  "ziprecruiter",
+  "monster",
+  "careerbuilder",
+]);
+
+function normalizeExtensionSources(raw) {
+  return [
     ...new Set(
-      raw
-        .map((s) => String(s || "").toLowerCase())
-        .filter((s) => s === "jobright")
+      (Array.isArray(raw) ? raw : [])
+        .map((s) => String(s || "").toLowerCase().trim())
+        .filter((s) => EXTENSION_SOURCES.has(s))
     ),
   ];
+}
+
+/**
+ * Queue an extension capture (DOM boards and/or JobRight).
+ * The extension polls GET /api/extension/poll about once a minute, or open
+ * the popup and click Start after queuing.
+ * Body: { sources?: ("indeed"|"ziprecruiter"|"monster"|"careerbuilder"|"jobright")[] }
+ * LinkedIn is not captured.
+ */
+app.post("/api/extension/capture", (req, res) => {
+  const sources = normalizeExtensionSources(
+    Array.isArray(req.body?.sources) ? req.body.sources : ["jobright"]
+  );
   if (!sources.length) {
     res.status(400).json({
       ok: false,
-      error: "sources must include jobright (LinkedIn capture is disabled)",
+      error:
+        "sources must include one of: indeed, ziprecruiter, monster, careerbuilder, jobright (LinkedIn is disabled)",
     });
     return;
   }
@@ -127,7 +142,7 @@ app.post("/api/extension/capture", (req, res) => {
     ok: true,
     queued: true,
     sources,
-    hint: "Reload the extension if needed, then click its toolbar icon for an immediate run (or wait ~1 min for the poll).",
+    hint: "Reload the extension if needed, open its popup and click Start (or wait ~1 min for the poll).",
   });
 });
 
@@ -141,9 +156,7 @@ app.get("/api/extension/poll", (_req, res) => {
   setMeta("extension_capture_request", "");
   try {
     const parsed = JSON.parse(String(raw));
-    const sources = (parsed.sources || ["jobright"]).filter(
-      (s) => s === "jobright"
-    );
+    const sources = normalizeExtensionSources(parsed.sources || ["jobright"]);
     res.json({
       ok: true,
       run: true,
@@ -155,9 +168,33 @@ app.get("/api/extension/poll", (_req, res) => {
   }
 });
 
+/** Last extension-oriented meta + allowed source ids. */
+app.get("/api/extension/status", (_req, res) => {
+  try {
+    const raw = getMeta("extension_capture_request");
+    let queued = null;
+    if (raw) {
+      try {
+        queued = JSON.parse(String(raw));
+      } catch {
+        queued = { raw: String(raw) };
+      }
+    }
+    res.json({
+      ok: true,
+      allowedSources: [...EXTENSION_SOURCES],
+      queued,
+      note: "Node API/Playwright capture is independent of the Chrome extension DOM path.",
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 /**
  * Extension ingest — jobs scraped from a logged-in Chrome session.
- * Body: { source?: 'jobright', jobs: [...] } — LinkedIn source is rejected.
+ * Body: { source?, jobs: [], trusted?, skipSlack?, excludeBidTracking? }
+ * LinkedIn source is rejected.
  */
 app.post("/api/ingest", async (req, res) => {
   try {
@@ -171,6 +208,10 @@ app.post("/api/ingest", async (req, res) => {
       source,
       trusted: !!req.body?.trusted,
       skipSlack: !!req.body?.skipSlack,
+      excludeBidTracking:
+        req.body?.excludeBidTracking === undefined
+          ? undefined
+          : !!req.body.excludeBidTracking,
     });
     res.json(result);
   } catch (err) {

@@ -19,16 +19,25 @@ flowchart TD
   sheet --> slack[notifyCaptureComplete]
   slack --> done[finishRun]
 
-  ext[Chrome extension] --> apiIngest[POST /api/ingest]
+  ext[Chrome extension DOM] --> apiIngest[POST /api/ingest]
   apiIngest --> ingestAlt[ingest.js filter upsert CSV Slack]
 ```
+
+## Dual capture paths
+
+| Path | Entry | Boards | Sheet exclude | Warehouse append | Slack |
+|------|-------|--------|---------------|------------------|-------|
+| Node API / Playwright / feeds | `src/capture.js` via cron / `npm run capture` / `POST /api/run` | Feeds + Playwright + JobRight `/swan` | Yes | Yes (`newJobs`) | Yes |
+| Extension DOM (selectable) | Chrome MV3 `extension/` → `POST /api/ingest` | Indeed, ZipRecruiter, Monster, CareerBuilder, JobRight (in-page `/swan`) | Yes when `excludeBidTracking` (default) | No | Yes |
+
+Paths are independent — enable either or both. Extension popup / Options / `POST /api/extension/capture` select DOM sources; Node `.env` `CAPTURE_*` selects API path sources.
 
 ## Capture vs ingest
 
 | Path | Entry | Sheet exclude | Warehouse append | Slack |
 |------|-------|---------------|------------------|-------|
 | Scheduled / `npm run capture` / `POST /api/run` | `src/capture.js` | Yes | Yes (`newJobs`) | Yes |
-| Extension / manual POST | `src/ingest.js` via `server.js` | No | No | Yes |
+| Extension / manual POST | `src/ingest.js` via `server.js` | Optional (`excludeBidTracking`, default on with config) | No | Yes |
 
 ## Module map
 
@@ -52,7 +61,7 @@ flowchart TD
 | `src/dice/search.js`, `detail.js` | Listing stubs → detail scrape |
 | `src/slack.js` | Incoming webhook summary of new jobs |
 | `apps-script/Code.gs` | Sheet web app: bid-tracker + warehouse actions |
-| `extension/` | Optional JobRight scrape via logged-in Chrome → `/api/ingest` |
+| `extension/` | Selectable DOM capture (Indeed/Zip/Monster/CB) + JobRight; popup/options; → `/api/ingest` |
 
 ## Outputs (`DATA_DIR`, default `download/`)
 
@@ -79,9 +88,10 @@ flowchart TD
 | `GET /api/status` | Last run, CSV paths, source flags |
 | `GET /api/jobs?status=new` | Jobs by status |
 | `POST /api/run` | Trigger `runCapture` |
-| `POST /api/ingest` | Extension posts jobs |
-| `POST /api/extension/capture` | Queue extension capture |
+| `POST /api/ingest` | Extension posts jobs (`trusted`, `excludeBidTracking`) |
+| `POST /api/extension/capture` | Queue extension sources (indeed/zip/monster/cb/jobright) |
 | `GET /api/extension/poll` | Extension polls for work |
+| `GET /api/extension/status` | Allowed extension sources + queued request |
 | `GET /api/export.csv` | Download combined CSV (`?source=` optional) |
 
 Default base: `http://127.0.0.1:3847`.

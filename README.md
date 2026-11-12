@@ -81,20 +81,32 @@ Individual installs: `npm run schedule:dice` or `npm run schedule:api`.
 npm run capture
 ```
 
-## Local API + extension
+## Local API + extension (two parallel paths)
 
 ```bash
 npm start
 ```
 
-Then load `extension/` unpacked in Chrome.
+Then load `extension/` unpacked in Chrome (`chrome://extensions` → Developer mode → Load unpacked → `extension/`).
+
+| Path | What it does | How you choose it |
+|------|----------------|-------------------|
+| **Node API / Playwright / feeds** | Scheduled `npm run capture`, cron, `POST /api/run` | `.env` `CAPTURE_*` flags — unchanged |
+| **Extension DOM** | Logged-in Chrome scrapes Indeed / ZipRecruiter / Monster / CareerBuilder (+ optional JobRight `/swan` in-page) | Extension popup source checkboxes, Options, or `POST /api/extension/capture` |
+
+Running one path does **not** disable the other. Prefer the extension for Indeed / Zip / Monster / CareerBuilder when you are signed in; keep `CAPTURE_INDEED=false` (etc.) if you want Node to skip those boards.
+
+Popup: select sources → **Start** / **Stop** / **Resume**. On CAPTCHA / login / Cloudflare the badge shows `!` — complete the challenge, then **Resume**. Offline ingest batches buffer in extension storage and retry (**Flush buffer**). Options: queries, pages, schedule hours, dry-run, bid-tracker exclude.
 
 | Endpoint | Description |
 |----------|-------------|
 | `GET /api/status` | Last run, CSV paths |
 | `GET /api/jobs?status=new` | New jobs |
-| `POST /api/run` | Trigger Dice capture (Node) |
-| `POST /api/ingest` | Extension posts JobRight jobs |
+| `POST /api/run` | Trigger Node capture |
+| `POST /api/ingest` | Extension posts jobs (`source`, `trusted`, `excludeBidTracking`) |
+| `POST /api/extension/capture` | Queue extension sources (`indeed`, `ziprecruiter`, `monster`, `careerbuilder`, `jobright`) |
+| `GET /api/extension/poll` | Extension polls for queued work |
+| `GET /api/extension/status` | Allowed extension sources + queue |
 | `GET /api/export.csv` | Download the combined CSV |
 
 ## Env highlights

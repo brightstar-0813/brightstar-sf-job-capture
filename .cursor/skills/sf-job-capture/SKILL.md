@@ -26,7 +26,7 @@ Personal bot that polls many public boards/APIs (plus a few Playwright scrapers)
 5. Repair JobRight URLs → prune store → remove sheet matches
 6. `syncCsv` → `appendJobsToSheet(newJobs)` → Slack → `finishRun`
 
-Alt path: Chrome extension → `POST /api/ingest` (`src/ingest.js`) — same store/CSV/Slack; **no** sheet append or bid-tracker exclude.
+Alt path: Chrome extension DOM → `POST /api/ingest` (`src/ingest.js`) — same store/CSV/Slack; bid-tracker exclude when requested (default on); **no** warehouse sheet append. Independent from Node `CAPTURE_*` path.
 
 ## Operate commands
 
