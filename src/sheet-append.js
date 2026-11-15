@@ -1,6 +1,7 @@
 /**
- * Append newly captured jobs to the jobs-warehouse Google Sheet tab
- * (US-SF-Jobs) via the Brightstar Apps Script web app.
+ * Append jobs to the jobs-warehouse Google Sheet tab (US-SF-Jobs) via the
+ * Brightstar Apps Script web app. Capture syncs the full jobs_latest.csv after
+ * each run; existing Links are skipped as duplicates on the sheet side.
  *
  * Warehouse columns: Role | Company | Link | JD | Salary
  * (no Status / Bid mode — those stay on bid-tracker profile tabs)

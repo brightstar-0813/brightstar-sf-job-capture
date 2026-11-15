@@ -51,6 +51,7 @@ import {
   loadBidTrackingExclusions,
   isExcludedBySheet,
 } from "./sheet-exclude.js";
+import { readCsvFile } from "./csv.js";
 import { appendJobsToSheet } from "./sheet-append.js";
 import { notifyCaptureComplete } from "./slack.js";
 
@@ -320,14 +321,19 @@ export async function runCapture({ skipSlack = false } = {}) {
     let sheetOut = null;
     if (config.syncJobsSheet) {
       try {
-        sheetOut = await appendJobsToSheet(newJobs);
+        // Full CSV → warehouse (link-deduped). Not just this run's newJobs.
+        const csvRows = readCsvFile(csvOut.latestPath || config.csvLatestPath);
+        console.log(
+          `[sheet] syncing ${csvRows.length} jobs from ${csvOut.latestPath || config.csvLatestPath}`
+        );
+        sheetOut = await appendJobsToSheet(csvRows);
         if (sheetOut.skipped) {
           console.log(
             `[sheet] sync skipped${sheetOut.error ? ` (${sheetOut.error})` : ""}`
           );
         } else {
           console.log(
-            `[sheet] ${sheetOut.sheetName}: appended=${sheetOut.appended} duplicate=${sheetOut.duplicate} failed=${sheetOut.failed}`
+            `[sheet] ${sheetOut.sheetName}: appended=${sheetOut.appended} duplicate=${sheetOut.duplicate} failed=${sheetOut.failed} total=${sheetOut.total}`
           );
         }
       } catch (sheetErr) {
