@@ -12,7 +12,7 @@
 import { config } from "./config.js";
 
 const DEFAULT_WEBAPP_URL =
-  "https://script.google.com/macros/s/AKfycbwZFDSrW3ZIyWuRZrXDU8DFN8Ktmr1qB8iy4aBRBB7bJ9DJyDeK9uOnZbrPt9YUFKg2/exec";
+  "https://script.google.com/macros/s/AKfycbwH-J2wyqDDIio8Aue7Afq_WZkn1-SBcJ8l2RH2dzCbMk6hZelVXyREOm6fiE9Eujrl/exec";
 
 /** Sheets cells max ~50k; keep headroom. */
 const JD_MAX_CHARS = 45000;

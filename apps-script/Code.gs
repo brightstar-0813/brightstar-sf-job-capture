@@ -1,20 +1,37 @@
 /**
- * Brightstar Bid bot sheet web app — bid-tracker tabs + jobs warehouse.
+ * One-time setup for Google Sheets append + duplicate check:
  *
- * Deploy: Extensions → Apps Script → paste → Deploy → Web app
- *   Execute as: Me | Who has access: Anyone
- * Redeploy after updates so new actions are live.
+ * 1. Open your spreadsheet (one workbook for all profiles)
+ * 2. Extensions → Apps Script
+ * 3. Paste this code and Save
+ * 4. Deploy → New deployment → Type: Web app
+ *    - Execute as: Me
+ *    - Who has access: Anyone
+ * 5. Copy the Web App URL into the extension / WorkSphere "Web App URL" field
+ *    (redeploy after updates so listRows / listLinks / listCaptureJobs / markApplied / sheetName are live)
  *
- * Actions:
- *   append           — bid-tracker row (No|Date|Title|Company|Link|Salary|Status|Bid mode)
- *   appendWarehouse  — warehouse row (Role|Company|Link|JD|Salary)  ← US-SF-Jobs
- *   replaceWarehouse — clear tab, write warehouse headers, optionally append rows[]
- *   listRows | listLinks | markApplied
+ * POST body (text/plain JSON):
+ *   action: "append" (default) | "listRows" | "listLinks" | "listCaptureJobs" | "markApplied"
+ *           | "appendWarehouse" | "replaceWarehouse"   (jobs warehouse, used by brightstar-sf-job-capture)
  *
- * Warehouse POST fields: jobTitle, companyName, jobLink, jd, salary
- * replaceWarehouse may include rows: [{ jobTitle, companyName, jobLink, jd, salary }, ...]
+ * SHARED SCRIPT: brightstar-bid-bot and brightstar-sf-job-capture deploy to the SAME web app.
+ * Keep apps-script/Code.gs identical in both repos — deploying either one must keep every action.
+ *   spreadsheetId, optional sheetName (tab per profile; created if missing)
+ *   listCaptureJobs also accepts sheetGid (from the sheet URL ?gid= / #gid=)
+ *   and for append: jobNo, applicationDate, jobTitle, companyName, jobLink, salary, status, bidMode
+ *
+ * Bid-tracking columns: A No | B Date | C Title | D Company | E Link | F Salary | G Status | H Bid mode
+ * Capture / jobs-source tabs (read-only via listCaptureJobs): Role | Company | Link | JD | Salary
+ * Resume build → Status "Ready". Apply click → Status "Applied M/D/YYYY h:mm AM/PM" on that row.
+ * Bid mode: "Auto bid" (batch) | "Manual bid" (one-off) | "Email bid".
+ * Dedup: same job link (normalized) is treated as duplicate within that tab.
+ *
+ * WorkSphere "Sync from sheet" calls listRows. Older scripts without listRows treated
+ * that request as append and wrote blank Ready rows — do not fall through unknown actions.
+ * Never run listRows / ensureSheetLayout_ on capture tabs — that deletes the JD column.
+ * append / markApplied use ensureWriteLayout_ (headers only) so large tabs stay fast;
+ * Sync / listRows / listLinks still run full ensureSheetLayout_ (prune + column cleanup).
  */
-
 function doPost(e) {
   try {
     const data = JSON.parse((e && e.postData && e.postData.contents) || "{}");
@@ -24,10 +41,21 @@ function doPost(e) {
 
     const ss = SpreadsheetApp.openById(String(data.spreadsheetId));
     const action = String(data.action || "append").toLowerCase().replace(/_/g, "");
-    const warehouse =
-      action === "appendwarehouse" ||
-      String(data.mode || "").toLowerCase() === "warehouse";
 
+    if (action === "listcapturejobs") {
+      const sheet = resolveExistingSheet_(ss, data.sheetGid, data.sheetName);
+      const rows = collectCaptureJobRows_(sheet);
+      return json_({
+        ok: true,
+        sheetName: sheet.getName(),
+        sheetGid: sheet.getSheetId(),
+        rows: rows,
+        count: rows.length
+      });
+    }
+
+    const warehouse =
+      action === "appendwarehouse" || String(data.mode || "").toLowerCase() === "warehouse";
     const sheet = resolveSheet_(ss, data.sheetName, warehouse);
 
     if (action === "listlinks") {
@@ -74,7 +102,8 @@ function doPost(e) {
     const jobTitle = String(data.jobTitle || "").trim();
 
     if (action === "markapplied" || action === "applied") {
-      ensureSheetLayout_(sheet);
+      // Fast path: do not prune/scan the whole tab on every Manual Bid / Apply.
+      ensureWriteLayout_(sheet);
       const appliedOn = String(data.applicationDate || "").trim();
       const status =
         String(data.status || "").trim() || (appliedOn ? "Applied " + appliedOn : "Applied");
@@ -117,15 +146,21 @@ function doPost(e) {
       return replaceWarehouse_(sheet, data);
     }
 
-    if (warehouse || action === "appendwarehouse") {
-      return appendWarehouse_(sheet, data, jobTitle, companyName, jobLink);
+    if (warehouse) {
+      return appendWarehouse_(
+        sheet,
+        data,
+        String(data.jobTitle || "").trim(),
+        String(data.companyName || "").trim(),
+        String(data.jobLink || "").trim()
+      );
     }
 
     if (action && action !== "append") {
       throw new Error(
         'Unknown action "' +
           String(data.action || "") +
-          '". Supported: append, appendWarehouse, replaceWarehouse, listRows, listLinks, markApplied.'
+          '". Supported: append, appendWarehouse, replaceWarehouse, listRows, listLinks, listCaptureJobs, markApplied.'
       );
     }
 
@@ -151,7 +186,8 @@ function doPost(e) {
       });
     }
 
-    ensureSheetLayout_(sheet);
+    // Fast path: headers only — full prune runs on listRows / Sync from sheet.
+    ensureWriteLayout_(sheet);
     sheet.appendRow(buildDataRow_(data, data.status || "Ready"));
     var appendedRow = sheet.getLastRow();
 
@@ -172,7 +208,7 @@ function doPost(e) {
 
 function doGet() {
   return ContentService.createTextOutput(
-    "Brightstar Bid bot sheet append + warehouse + duplicate-check endpoint is running."
+    "Brightstar shared sheet web app v2026-11-15 (merged: listCaptureJobs + warehouse) is running."
   );
 }
 
@@ -182,140 +218,7 @@ function json_(obj) {
   );
 }
 
-var WAREHOUSE_HEADERS = ["Role", "Company", "Link", "JD", "Salary"];
-
-function appendWarehouse_(sheet, data, jobTitle, companyName, jobLink) {
-  if (!rowHasJobIdentity_(jobTitle, companyName, jobLink)) {
-    throw new Error("Refusing to append an empty row (need title, company, or link).");
-  }
-  ensureWarehouseLayout_(sheet);
-  // Only match the Link column — scanning JD false-positives on URLs in descriptions.
-  if (jobLink) {
-    var dupRow = findWarehouseLinkRow_(sheet, jobLink);
-    if (dupRow > 0) {
-      return json_({
-        ok: true,
-        duplicate: true,
-        reason: "link",
-        sheetName: sheet.getName(),
-        row: dupRow
-      });
-    }
-  }
-  sheet.appendRow(buildWarehouseRow_(data));
-  return json_({
-    ok: true,
-    duplicate: false,
-    warehouse: true,
-    sheetName: sheet.getName(),
-    row: sheet.getLastRow()
-  });
-}
-
-/** Warehouse dedupe: exact normalized match on Link column only (ignore JD body URLs). */
-function findWarehouseLinkRow_(sheet, jobLink) {
-  var target = normalizeLink_(jobLink);
-  if (!target) return -1;
-  var values = sheet.getDataRange().getValues();
-  if (!values || !values.length) return -1;
-  var hasHeader = rowLooksLikeHeader_(values[0]);
-  var start = hasHeader ? 1 : 0;
-  var linkCol = hasHeader ? linkColumnIndex_(values[0]) : 2;
-  for (var r = start; r < values.length; r++) {
-    var cell = String((values[r] || [])[linkCol] || "").trim();
-    if (!cell) continue;
-    if (normalizeLink_(cell) === target) return r + 1;
-  }
-  return -1;
-}
-
-/**
- * Wipe the tab, write Role|Company|Link|JD|Salary, then optionally append rows.
- * Used to reorganize US-SF-Jobs from the old Ready/Auto-bid layout.
- */
-function replaceWarehouse_(sheet, data) {
-  sheet.clear();
-  sheet.getRange(1, 1, 1, WAREHOUSE_HEADERS.length).setValues([WAREHOUSE_HEADERS]);
-  var rows = Array.isArray(data.rows) ? data.rows : [];
-  var appended = 0;
-  var skipped = 0;
-  var seen = {};
-  for (var i = 0; i < rows.length; i++) {
-    var row = rows[i] || {};
-    var title = String(row.jobTitle || row.title || row.role || "").trim();
-    var company = String(row.companyName || row.company || "").trim();
-    var link = String(row.jobLink || row.link || row.url || "").trim();
-    if (!rowHasJobIdentity_(title, company, link)) {
-      skipped += 1;
-      continue;
-    }
-    var key = normalizeLink_(link) || (title + "|" + company).toLowerCase();
-    if (key && seen[key]) {
-      skipped += 1;
-      continue;
-    }
-    if (key) seen[key] = true;
-    sheet.appendRow(
-      buildWarehouseRow_({
-        jobTitle: title,
-        companyName: company,
-        jobLink: link,
-        jd: row.jd || row.description || "",
-        salary: row.salary || ""
-      })
-    );
-    appended += 1;
-  }
-  return json_({
-    ok: true,
-    replaced: true,
-    warehouse: true,
-    sheetName: sheet.getName(),
-    appended: appended,
-    skipped: skipped,
-    headers: WAREHOUSE_HEADERS
-  });
-}
-
-/** Role | Company | Link | JD | Salary */
-function buildWarehouseRow_(data) {
-  var jd = String(data.jd || data.description || data.jobDescription || "").trim();
-  if (jd.length > 45000) jd = jd.slice(0, 44999) + "…";
-  return [
-    String(data.jobTitle || data.title || data.role || "").trim(),
-    String(data.companyName || data.company || "").trim(),
-    String(data.jobLink || data.link || data.url || "").trim(),
-    jd,
-    String(data.salary || "").trim()
-  ];
-}
-
-function ensureWarehouseLayout_(sheet) {
-  var headers = headerRow_(sheet);
-  var looksWarehouse =
-    rowLooksLikeHeader_(headers) &&
-    findNamedColumnIndex_(headers, ["role", "title", "job title"]) >= 0 &&
-    findNamedColumnIndex_(headers, ["jd", "job description", "description"]) >= 0 &&
-    findNamedColumnIndex_(headers, ["status", "bid mode", "bidmode"]) < 0;
-
-  if (!looksWarehouse) {
-    sheet.getRange(1, 1, 1, WAREHOUSE_HEADERS.length).setValues([WAREHOUSE_HEADERS]);
-  } else {
-    // Normalize header labels if present under aliases.
-    var roleIdx = findNamedColumnIndex_(headers, ["role", "title", "job title"]);
-    var companyIdx = findNamedColumnIndex_(headers, ["company", "compay", "company name"]);
-    var linkIdx = findNamedColumnIndex_(headers, ["link", "job link", "url"]);
-    var jdIdx = findNamedColumnIndex_(headers, ["jd", "job description", "description"]);
-    var salaryIdx = findNamedColumnIndex_(headers, ["salary", "comp", "compensation"]);
-    if (roleIdx >= 0) sheet.getRange(1, roleIdx + 1).setValue("Role");
-    if (companyIdx >= 0) sheet.getRange(1, companyIdx + 1).setValue("Company");
-    if (linkIdx >= 0) sheet.getRange(1, linkIdx + 1).setValue("Link");
-    if (jdIdx >= 0) sheet.getRange(1, jdIdx + 1).setValue("JD");
-    if (salaryIdx >= 0) sheet.getRange(1, salaryIdx + 1).setValue("Salary");
-  }
-}
-
-/** Pick an existing tab by name, or create it with the right header row. */
+/** Pick an existing tab by name, or create it with the standard header row. */
 function resolveSheet_(ss, sheetName, warehouse) {
   var name = String(sheetName || "")
     .trim()
@@ -332,12 +235,37 @@ function resolveSheet_(ss, sheetName, warehouse) {
   var created = ss.insertSheet(name);
   if (warehouse) {
     created.getRange(1, 1, 1, WAREHOUSE_HEADERS.length).setValues([WAREHOUSE_HEADERS]);
-  } else {
-    created.getRange(1, 1, 1, 8).setValues([
-      ["No", "Date", "Title", "Company", "Link", "Salary", "Status", "Bid mode"]
-    ]);
+    return created;
   }
+  created.getRange(1, 1, 1, 8).setValues([
+    ["No", "Date", "Title", "Company", "Link", "Salary", "Status", "Bid mode"]
+  ]);
   return created;
+}
+
+/**
+ * Read-only tab resolve for capture / jobs-source sheets.
+ * Prefer sheetGid (from the Google Sheets URL); else sheetName. Never creates a tab.
+ */
+function resolveExistingSheet_(ss, sheetGid, sheetName) {
+  var gidRaw = String(sheetGid == null ? "" : sheetGid).trim();
+  if (gidRaw !== "" && /^\d+$/.test(gidRaw)) {
+    var byId = ss.getSheetById(Number(gidRaw));
+    if (byId) return byId;
+    throw new Error('No sheet tab with gid "' + gidRaw + '".');
+  }
+  var name = String(sheetName || "")
+    .trim()
+    .replace(/[:\\\/\?\*\[\]]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (name.length > 100) name = name.slice(0, 100).trim();
+  if (!name) {
+    throw new Error("listCaptureJobs requires sheetGid (from the sheet URL) or sheetName.");
+  }
+  var existing = ss.getSheetByName(name);
+  if (existing) return existing;
+  throw new Error('Sheet tab "' + name + '" was not found.');
 }
 
 /** One data row A–H: No | Date | Title | Company | Link | Salary | Status | Bid mode */
@@ -382,6 +310,7 @@ function normalizeLink_(url) {
   if (!raw) return "";
   try {
     var u = raw;
+    // Strip common tracking query params without needing full URL parser quirks
     u = u.replace(/[?#].*$/, function (m) {
       if (m.charAt(0) === "#") return "";
       var q = m.slice(1);
@@ -418,7 +347,7 @@ function rowLooksLikeHeader_(row) {
     .join(" ");
   if (!joined) return false;
   if (/https?:\/\//i.test(joined)) return false;
-  return /\b(link|title|role|company|compay|status|date|salary|jd|bid\s*mode|bid\s*source)\b/.test(
+  return /\b(link|title|role|company|compay|status|date|salary|jd|job\s*description|bid\s*mode|bid\s*source)\b/.test(
     joined
   );
 }
@@ -439,7 +368,7 @@ function linkColumnIndex_(headerRow) {
     var idx = headers.indexOf(names[i]);
     if (idx >= 0) return idx;
   }
-  return 4;
+  return 4; // column E
 }
 
 function statusColumnIndex_(headerRow) {
@@ -453,7 +382,7 @@ function statusColumnIndex_(headerRow) {
     var idx = headers.indexOf(names[i]);
     if (idx >= 0) return idx;
   }
-  return 6;
+  return 6; // column G
 }
 
 function bidModeColumnIndex_(headerRow) {
@@ -467,6 +396,7 @@ function bidModeColumnIndex_(headerRow) {
     var idx = headers.indexOf(names[i]);
     if (idx >= 0) return idx;
   }
+  // Default: immediately after Status.
   return statusColumnIndex_(headerRow) + 1;
 }
 
@@ -489,12 +419,12 @@ function titleColumnIndex_(headerRow) {
       .trim()
       .toLowerCase();
   });
-  var names = ["role", "title", "job title", "position"];
+  var names = ["title", "job title", "role", "position"];
   for (var i = 0; i < names.length; i++) {
     var idx = headers.indexOf(names[i]);
     if (idx >= 0) return idx;
   }
-  return 2;
+  return 2; // column C
 }
 
 function salaryColumnIndex_(headerRow) {
@@ -508,7 +438,22 @@ function salaryColumnIndex_(headerRow) {
     var idx = headers.indexOf(names[i]);
     if (idx >= 0) return idx;
   }
-  return 5;
+  return 5; // column F
+}
+
+/** JD / description column for capture tabs (Role | Company | Link | JD | Salary). */
+function jdTextColumnIndex_(headerRow) {
+  var idx = findNamedColumnIndex_(headerRow, [
+    "jd",
+    "job description",
+    "description",
+    "job desc",
+    "job_description",
+    "jd text",
+    "jdtext"
+  ]);
+  if (idx >= 0) return idx;
+  return 3; // column D on Role|Company|Link|JD|Salary
 }
 
 function dateColumnIndex_(headerRow) {
@@ -522,7 +467,7 @@ function dateColumnIndex_(headerRow) {
     var idx = headers.indexOf(names[i]);
     if (idx >= 0) return idx;
   }
-  return 1;
+  return 1; // column B
 }
 
 function jobNoColumnIndex_(headerRow) {
@@ -536,7 +481,7 @@ function jobNoColumnIndex_(headerRow) {
     var idx = headers.indexOf(names[i]);
     if (idx >= 0) return idx;
   }
-  return 0;
+  return 0; // column A
 }
 
 function rowHasJobIdentity_(title, company, link) {
@@ -555,9 +500,11 @@ function ensureStatusHeader_(sheet) {
   }
 }
 
+/** Ensure Bid mode sits immediately after Status (column H on a fresh sheet). */
 function ensureBidModeHeader_(sheet) {
   var headers = headerRow_(sheet);
   if (!rowLooksLikeHeader_(headers)) {
+    // No header row — still reserve H for Bid mode on writes.
     return;
   }
   var statusIdx = statusColumnIndex_(headers);
@@ -582,26 +529,32 @@ function ensureBidModeHeader_(sheet) {
     }
     return;
   }
-  var bidCol = statusIdx + 2;
+  var bidCol = statusIdx + 2; // 1-based column after Status
   sheet.getRange(1, bidCol).setValue("Bid mode");
 }
 
+/** Warehouse / capture tabs (Role + JD, no Status) must never be reshaped. */
+function isWarehouseTab_(headers) {
+  return (
+    rowLooksLikeHeader_(headers) &&
+    findNamedColumnIndex_(headers, ["role"]) >= 0 &&
+    findNamedColumnIndex_(headers, ["jd", "job description", "description"]) >= 0
+  );
+}
+
+/** Remove a previously added JD column so Status / Bid mode stay aligned. */
 function dropJdColumnIfPresent_(sheet) {
   var headers = headerRow_(sheet);
   if (!rowLooksLikeHeader_(headers)) return;
-  // Warehouse tabs keep JD.
-  if (findNamedColumnIndex_(headers, ["role"]) >= 0 && findNamedColumnIndex_(headers, ["jd", "job description", "description"]) >= 0) {
-    return;
-  }
+  if (isWarehouseTab_(headers)) return;
   var jdIdx = findNamedColumnIndex_(headers, ["jd", "job description", "description", "job desc"]);
   if (jdIdx >= 0) sheet.deleteColumn(jdIdx + 1);
 }
 
+/** Drop orphan columns past Bid mode (keeps Status + Bid mode). */
 function trimColumnsPastBidMode_(sheet) {
   var headers = headerRow_(sheet);
-  if (findNamedColumnIndex_(headers, ["role"]) >= 0 && findNamedColumnIndex_(headers, ["jd", "job description"]) >= 0) {
-    return;
-  }
+  if (isWarehouseTab_(headers)) return;
   var lastKeep;
   if (rowLooksLikeHeader_(headers)) {
     lastKeep = Math.max(statusColumnIndex_(headers), bidModeColumnIndex_(headers)) + 1;
@@ -614,6 +567,11 @@ function trimColumnsPastBidMode_(sheet) {
   }
 }
 
+/**
+ * Delete rows that only have Status (e.g. lone "Ready") with no title/company/link.
+ * Walk bottom-up so deletes do not shift unvisited indices.
+ * @return {number} rows removed
+ */
 function pruneBlankReadyRows_(sheet) {
   var values = sheet.getDataRange().getValues();
   if (!values || values.length < 2) return 0;
@@ -639,6 +597,7 @@ function pruneBlankReadyRows_(sheet) {
       }
     }
     if (rowHasJobIdentity_(title, company, link)) continue;
+    // Entirely empty rows also count — clear the Ready-only placeholders.
     var any = false;
     for (var i = 0; i < row.length; i++) {
       if (String(row[i] || "").trim()) {
@@ -653,22 +612,25 @@ function pruneBlankReadyRows_(sheet) {
   return removed;
 }
 
-function ensureSheetLayout_(sheet) {
-  var headers = headerRow_(sheet);
-  if (
-    rowLooksLikeHeader_(headers) &&
-    findNamedColumnIndex_(headers, ["role"]) >= 0 &&
-    findNamedColumnIndex_(headers, ["jd", "job description", "description"]) >= 0
-  ) {
-    return 0;
-  }
+/**
+ * Cheap layout for append / markApplied: ensure Status + Bid mode headers only.
+ * Avoids full-sheet prune (deleteRow loops) that make Manual Bid feel stuck.
+ */
+function ensureWriteLayout_(sheet) {
   ensureStatusHeader_(sheet);
   ensureBidModeHeader_(sheet);
+}
+
+/** Normalize layout before Sync/list reads. Returns blank rows pruned. */
+function ensureSheetLayout_(sheet) {
+  if (isWarehouseTab_(headerRow_(sheet))) return 0;
+  ensureWriteLayout_(sheet);
   dropJdColumnIfPresent_(sheet);
   trimColumnsPastBidMode_(sheet);
   return pruneBlankReadyRows_(sheet);
 }
 
+/** Always write Status to the Status column (G), never "after last filled cell". */
 function statusColumnForRow_(sheet, row) {
   var headers = headerRow_(sheet);
   if (rowLooksLikeHeader_(headers)) return statusColumnIndex_(headers) + 1;
@@ -687,14 +649,62 @@ function companyColumnIndex_(headerRow) {
       .trim()
       .toLowerCase();
   });
+  // Include common typo "compay" (seen on some bid-tracking sheets).
   var names = ["company", "compay", "company name", "employer", "organization", "org"];
   for (var i = 0; i < names.length; i++) {
     var idx = headers.indexOf(names[i]);
     if (idx >= 0) return idx;
   }
-  return 3;
+  return 3; // column D
 }
 
+/**
+ * Capture / jobs-source rows for batch ingest. Read-only — does not mutate layout.
+ * Expects headers like Role | Company | Link | JD | Salary (flexible aliases).
+ */
+function collectCaptureJobRows_(sheet) {
+  var values = sheet.getDataRange().getValues();
+  if (!values || !values.length) return [];
+  var hasHeader = rowLooksLikeHeader_(values[0]);
+  var start = hasHeader ? 1 : 0;
+  var header = hasHeader ? values[0] : [];
+  var titleCol = hasHeader ? titleColumnIndex_(header) : 0;
+  var companyCol = hasHeader ? companyColumnIndex_(header) : 1;
+  var linkCol = hasHeader ? linkColumnIndex_(header) : 2;
+  var jdCol = hasHeader ? jdTextColumnIndex_(header) : 3;
+  var salaryCol = hasHeader ? salaryColumnIndex_(header) : 4;
+  var out = [];
+  for (var r = start; r < values.length; r++) {
+    var row = values[r] || [];
+    var title = String(row[titleCol] || "").trim();
+    var company = String(row[companyCol] || "").trim();
+    var link = String(row[linkCol] || "").trim();
+    var jdText = String(row[jdCol] || "").trim();
+    var salary = String(row[salaryCol] || "").trim();
+    if (!link) {
+      for (var c = 0; c < row.length; c++) {
+        var cell = String(row[c] || "").trim();
+        if (cellLooksLikeUrl_(cell)) {
+          link = cell;
+          break;
+        }
+      }
+    }
+    if (!rowHasJobIdentity_(title, company, link) && !jdText) continue;
+    if (!title && !company && !link && !jdText) continue;
+    out.push({
+      row: r + 1,
+      title: title,
+      company: company,
+      link: link,
+      jdText: jdText,
+      salary: salary
+    });
+  }
+  return out;
+}
+
+/** Full job rows for WorkSphere Sync from sheet (skips blank Ready placeholders). */
 function collectJobRows_(sheet) {
   var values = sheet.getDataRange().getValues();
   if (!values || !values.length) return [];
@@ -777,6 +787,7 @@ function statusLooksApplied_(status) {
   return /^\s*applied\b/i.test(String(status || "").trim());
 }
 
+/** Link + Status pairs for generate vs apply duplicate gates. */
 function collectLinkStatusPairs_(sheet) {
   var values = sheet.getDataRange().getValues();
   if (!values || !values.length) return [];
@@ -806,6 +817,7 @@ function collectLinkStatusPairs_(sheet) {
   return out;
 }
 
+/** Company + link pairs so apply-time dedupe can ignore this job's own Ready row. */
 function collectCompanyLinkPairs_(sheet) {
   var values = sheet.getDataRange().getValues();
   if (!values || !values.length) return [];
@@ -831,6 +843,21 @@ function collectCompanyLinkPairs_(sheet) {
     out.push({ company: company, link: link });
   }
   return out;
+}
+
+function companyExists_(sheet, companyName) {
+  var target = normalizeCompanyName_(companyName);
+  if (!target) return false;
+  var values = sheet.getDataRange().getValues();
+  if (!values || !values.length) return false;
+  var hasHeader = rowLooksLikeHeader_(values[0]);
+  var start = hasHeader ? 1 : 0;
+  var col = hasHeader ? companyColumnIndex_(values[0]) : 3;
+  for (var r = start; r < values.length; r++) {
+    var n = normalizeCompanyName_((values[r] || [])[col]);
+    if (n && n === target) return true;
+  }
+  return false;
 }
 
 function collectJobLinks_(sheet) {
@@ -871,4 +898,135 @@ function findRowByLink_(sheet, jobLink) {
 
 function linkExists_(sheet, jobLink) {
   return findRowByLink_(sheet, jobLink) > 0;
+}
+
+// ---- Jobs warehouse (brightstar-sf-job-capture) ----
+
+var WAREHOUSE_HEADERS = ["Role", "Company", "Link", "JD", "Salary"];
+
+function appendWarehouse_(sheet, data, jobTitle, companyName, jobLink) {
+  if (!rowHasJobIdentity_(jobTitle, companyName, jobLink)) {
+    throw new Error("Refusing to append an empty row (need title, company, or link).");
+  }
+  ensureWarehouseLayout_(sheet);
+  // Only match the Link column — scanning JD false-positives on URLs in descriptions.
+  if (jobLink) {
+    var dupRow = findWarehouseLinkRow_(sheet, jobLink);
+    if (dupRow > 0) {
+      return json_({
+        ok: true,
+        duplicate: true,
+        reason: "link",
+        sheetName: sheet.getName(),
+        row: dupRow
+      });
+    }
+  }
+  sheet.appendRow(buildWarehouseRow_(data));
+  return json_({
+    ok: true,
+    duplicate: false,
+    warehouse: true,
+    sheetName: sheet.getName(),
+    row: sheet.getLastRow()
+  });
+}
+
+/** Warehouse dedupe: exact normalized match on Link column only (ignore JD body URLs). */
+function findWarehouseLinkRow_(sheet, jobLink) {
+  var target = normalizeLink_(jobLink);
+  if (!target) return -1;
+  var values = sheet.getDataRange().getValues();
+  if (!values || !values.length) return -1;
+  var hasHeader = rowLooksLikeHeader_(values[0]);
+  var start = hasHeader ? 1 : 0;
+  var linkCol = hasHeader ? linkColumnIndex_(values[0]) : 2;
+  for (var r = start; r < values.length; r++) {
+    var cell = String((values[r] || [])[linkCol] || "").trim();
+    if (!cell) continue;
+    if (normalizeLink_(cell) === target) return r + 1;
+  }
+  return -1;
+}
+
+function replaceWarehouse_(sheet, data) {
+  sheet.clear();
+  sheet.getRange(1, 1, 1, WAREHOUSE_HEADERS.length).setValues([WAREHOUSE_HEADERS]);
+  var rows = Array.isArray(data.rows) ? data.rows : [];
+  var appended = 0;
+  var skipped = 0;
+  var seen = {};
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i] || {};
+    var title = String(row.jobTitle || row.title || row.role || "").trim();
+    var company = String(row.companyName || row.company || "").trim();
+    var link = String(row.jobLink || row.link || row.url || "").trim();
+    if (!rowHasJobIdentity_(title, company, link)) {
+      skipped += 1;
+      continue;
+    }
+    var key = normalizeLink_(link) || (title + "|" + company).toLowerCase();
+    if (key && seen[key]) {
+      skipped += 1;
+      continue;
+    }
+    if (key) seen[key] = true;
+    sheet.appendRow(
+      buildWarehouseRow_({
+        jobTitle: title,
+        companyName: company,
+        jobLink: link,
+        jd: row.jd || row.description || "",
+        salary: row.salary || ""
+      })
+    );
+    appended += 1;
+  }
+  return json_({
+    ok: true,
+    replaced: true,
+    warehouse: true,
+    sheetName: sheet.getName(),
+    appended: appended,
+    skipped: skipped,
+    headers: WAREHOUSE_HEADERS
+  });
+}
+
+/** Role | Company | Link | JD | Salary */
+function buildWarehouseRow_(data) {
+  var jd = String(data.jd || data.description || data.jobDescription || "").trim();
+  if (jd.length > 45000) jd = jd.slice(0, 44999) + "…";
+  return [
+    String(data.jobTitle || data.title || data.role || "").trim(),
+    String(data.companyName || data.company || "").trim(),
+    String(data.jobLink || data.link || data.url || "").trim(),
+    jd,
+    String(data.salary || "").trim()
+  ];
+}
+
+function ensureWarehouseLayout_(sheet) {
+  var headers = headerRow_(sheet);
+  var looksWarehouse =
+    rowLooksLikeHeader_(headers) &&
+    findNamedColumnIndex_(headers, ["role", "title", "job title"]) >= 0 &&
+    findNamedColumnIndex_(headers, ["jd", "job description", "description"]) >= 0 &&
+    findNamedColumnIndex_(headers, ["status", "bid mode", "bidmode"]) < 0;
+
+  if (!looksWarehouse) {
+    sheet.getRange(1, 1, 1, WAREHOUSE_HEADERS.length).setValues([WAREHOUSE_HEADERS]);
+  } else {
+    // Normalize header labels if present under aliases.
+    var roleIdx = findNamedColumnIndex_(headers, ["role", "title", "job title"]);
+    var companyIdx = findNamedColumnIndex_(headers, ["company", "compay", "company name"]);
+    var linkIdx = findNamedColumnIndex_(headers, ["link", "job link", "url"]);
+    var jdIdx = findNamedColumnIndex_(headers, ["jd", "job description", "description"]);
+    var salaryIdx = findNamedColumnIndex_(headers, ["salary", "comp", "compensation"]);
+    if (roleIdx >= 0) sheet.getRange(1, roleIdx + 1).setValue("Role");
+    if (companyIdx >= 0) sheet.getRange(1, companyIdx + 1).setValue("Company");
+    if (linkIdx >= 0) sheet.getRange(1, linkIdx + 1).setValue("Link");
+    if (jdIdx >= 0) sheet.getRange(1, jdIdx + 1).setValue("JD");
+    if (salaryIdx >= 0) sheet.getRange(1, salaryIdx + 1).setValue("Salary");
+  }
 }

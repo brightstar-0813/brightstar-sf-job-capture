@@ -418,7 +418,7 @@ export const config = {
   syncJobsSheet: bool("SYNC_JOBS_SHEET", true),
   jobsSheetWebappUrl: String(
     process.env.JOBS_SHEET_WEBAPP_URL ||
-      "https://script.google.com/macros/s/AKfycbwZFDSrW3ZIyWuRZrXDU8DFN8Ktmr1qB8iy4aBRBB7bJ9DJyDeK9uOnZbrPt9YUFKg2/exec"
+      "https://script.google.com/macros/s/AKfycbwH-J2wyqDDIio8Aue7Afq_WZkn1-SBcJ8l2RH2dzCbMk6hZelVXyREOm6fiE9Eujrl/exec"
   ).trim(),
   jobsSheetUrl: String(
     process.env.JOBS_SHEET_URL ||
