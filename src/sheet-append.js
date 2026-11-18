@@ -1,7 +1,7 @@
 /**
- * Append jobs to the jobs-warehouse Google Sheet tab (US-SF-Jobs) via the
- * Brightstar Apps Script web app. Capture syncs the full jobs_latest.csv after
- * each run; existing Links are skipped as duplicates on the sheet side.
+ * Jobs-warehouse Google Sheet tab (US-SF-Jobs) via the Brightstar Apps Script
+ * web app. Capture mirrors the full jobs_latest.csv to the tab after each run
+ * (replaceJobsSheet: clear + refill). appendJobsToSheet is kept for sheet:sync.
  *
  * Warehouse columns: Role | Company | Link | JD | Salary
  * (no Status / Bid mode — those stay on bid-tracker profile tabs)
@@ -260,4 +260,46 @@ export async function appendJobsToSheet(jobs = [], opts = {}) {
   }
 
   return result;
+}
+
+/**
+ * Mirror the warehouse tab to exactly `jobs` (the full jobs CSV): clear it,
+ * write headers, then append every row. Never wipes the tab for an empty list
+ * and never appends if the clear step failed.
+ * @param {object[]} jobs
+ */
+export async function replaceJobsSheet(jobs = []) {
+  const list = Array.isArray(jobs) ? jobs.filter(Boolean) : [];
+  const sheetName = String(config.jobsSheetName || "US-SF-Jobs").trim();
+  const result = {
+    ok: true,
+    skipped: false,
+    appended: 0,
+    duplicate: 0,
+    failed: 0,
+    total: list.length,
+    sheetName,
+    error: "",
+  };
+
+  if (!config.syncJobsSheet) {
+    result.skipped = true;
+    return result;
+  }
+
+  if (!list.length) {
+    result.skipped = true;
+    result.error = "CSV has no rows — sheet left unchanged";
+    return result;
+  }
+
+  const reset = await resetWarehouseSheet();
+  if (!reset.ok) {
+    result.ok = false;
+    result.error = `reset failed: ${reset.error}`;
+    return result;
+  }
+
+  const appended = await appendJobsToSheet(list, { force: true });
+  return { ...appended, sheetName: reset.sheetName || sheetName };
 }

@@ -15,7 +15,7 @@ flowchart TD
   gate --> upsert[upsertJob store.json]
   upsert --> post[repair prune remove sheet matches]
   post --> csv[syncCsv]
-  csv --> sheet[appendJobsToSheet newJobs]
+  csv --> sheet[replaceJobsSheet full CSV]
   sheet --> slack[notifyCaptureComplete]
   slack --> done[finishRun]
 

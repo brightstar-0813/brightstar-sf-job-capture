@@ -62,13 +62,16 @@ Three distinct paths:
 - Builds URL / board-id sets.
 - Capture skips matching jobs and removes already-stored matches after the run.
 
-### 2. Warehouse append (`src/sheet-append.js`)
+### 2. Warehouse mirror (`src/sheet-append.js`)
 
-- After capture, POSTs `text/plain` JSON to Apps Script:
-  `{ action: "appendWarehouse", spreadsheetId, sheetName, jobTitle, companyName, jobLink, jd, salary }`
+- After every Node capture, `replaceJobsSheet(csvRows)` runs on the full `jobs_latest.csv`:
+  1. `replaceWarehouse` (`rows: []`) clears the tab and writes headers.
+  2. `appendWarehouse` POSTs each CSV row as `text/plain` JSON:
+     `{ action: "appendWarehouse", spreadsheetId, sheetName, jobTitle, companyName, jobLink, jd, salary }`
 - Columns: **Role | Company | Link | JD | Salary** (no Ready / Auto bid).
-- Link dedupe on sheet; soft-fail with retries; ~400ms between rows.
-- Only **new** jobs from that capture run.
+- Skipped (tab untouched) when the CSV is empty. Not run when the reset fails.
+- Soft-fail with retries; ~400ms between rows. Clear-then-refill takes about 1–2 minutes for ~100 rows.
+- `appendJobsToSheet` (append-only, link-deduped) is still used by `npm run sheet:sync`.
 
 ### 3. Bulk CSV sync (`src/sheet-sync-csv.js`)
 

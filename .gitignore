@@ -8,3 +8,4 @@ download/
 playwright-report/
 test-results/
 download/jobright-auth.json
+.sf/

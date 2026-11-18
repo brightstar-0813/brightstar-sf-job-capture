@@ -106,4 +106,4 @@ Node scheduled capture (feeds / Playwright / JobRight `/swan`) is unchanged and 
 2. Narrow `.env` toggles (disable unrelated `CAPTURE_*`) for a fast test.
 3. `npm run capture`.
 4. Inspect console skip reasons + `download/jobs_latest.csv` / `store.json`.
-5. Re-enable sources; full capture; `npm run sheet:sync` only if warehouse needs a bulk catch-up (normal capture already appends **new** jobs).
+5. Re-enable sources; full capture (this also mirrors the full CSV to the warehouse tab). `npm run sheet:sync` is only needed for an ad-hoc append outside capture.

@@ -13,7 +13,7 @@ disable-model-invocation: true
 
 Repo: `D:\Work\JobHunting\Prompts\Bots\sf-job-capture` (package name `dice-job-capture`).
 
-Personal bot that polls many public boards/APIs (plus a few Playwright scrapers), keeps **remote US-friendly Salesforce-ecosystem** jobs posted within `RECENT_DAYS`, dedupes into `download/store.json`, overwrites combined + per-source CSVs, optionally appends **new** jobs to a Google Sheets warehouse, and can Slack-notify.
+Personal bot that polls many public boards/APIs (plus a few Playwright scrapers), keeps **remote US-friendly Salesforce-ecosystem** jobs posted within `RECENT_DAYS`, dedupes into `download/store.json`, overwrites combined + per-source CSVs, optionally mirrors the full combined CSV to a Google Sheets warehouse (clear + refill each run), and can Slack-notify.
 
 ## Pipeline (one page)
 
@@ -24,7 +24,7 @@ Personal bot that polls many public boards/APIs (plus a few Playwright scrapers)
 3. JobRight last via HTTP `POST /swan/recommend/search` (browser arg unused)
 4. Per job: sheet exclude → `captureRuleReason` → `upsertJob`
 5. Repair JobRight URLs → prune store → remove sheet matches
-6. `syncCsv` → `appendJobsToSheet(newJobs)` → Slack → `finishRun`
+6. `syncCsv` → `replaceJobsSheet(csvRows)` (full CSV) → Slack → `finishRun`
 
 Alt path: Chrome extension DOM → `POST /api/ingest` (`src/ingest.js`) — same store/CSV/Slack; bid-tracker exclude when requested (default on); **no** warehouse sheet append. Independent from Node `CAPTURE_*` path.
 

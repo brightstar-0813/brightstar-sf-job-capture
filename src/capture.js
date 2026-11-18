@@ -52,7 +52,7 @@ import {
   isExcludedBySheet,
 } from "./sheet-exclude.js";
 import { readCsvFile } from "./csv.js";
-import { appendJobsToSheet } from "./sheet-append.js";
+import { replaceJobsSheet } from "./sheet-append.js";
 import { notifyCaptureComplete } from "./slack.js";
 
 let running = false;
@@ -321,12 +321,12 @@ export async function runCapture({ skipSlack = false } = {}) {
     let sheetOut = null;
     if (config.syncJobsSheet) {
       try {
-        // Full CSV → warehouse (link-deduped). Not just this run's newJobs.
+        // Mirror the full CSV to the warehouse tab every run (clear + refill).
         const csvRows = readCsvFile(csvOut.latestPath || config.csvLatestPath);
         console.log(
-          `[sheet] syncing ${csvRows.length} jobs from ${csvOut.latestPath || config.csvLatestPath}`
+          `[sheet] mirroring ${csvRows.length} jobs from ${csvOut.latestPath || config.csvLatestPath}`
         );
-        sheetOut = await appendJobsToSheet(csvRows);
+        sheetOut = await replaceJobsSheet(csvRows);
         if (sheetOut.skipped) {
           console.log(
             `[sheet] sync skipped${sheetOut.error ? ` (${sheetOut.error})` : ""}`

@@ -128,7 +128,7 @@ Popup: select sources → **Start** / **Stop** / **Resume**. On CAPTCHA / login 
 | `JOBRIGHT_TITLES` | Optional override of the JobRight seed list. When unset, JobRight uses `ROLE_TITLES` |
 | `JOBRIGHT_MAX_PAGES` | JobRight pages per seed title, 20 results each (default `5`) |
 | `EXCLUDE_BID_TRACKING_SHEET` / `BID_TRACKING_SHEET_URL` | Skip jobs whose Link is already on the bid-tracking sheet |
-| `SYNC_JOBS_SHEET` / `JOBS_SHEET_WEBAPP_URL` / `JOBS_SHEET_URL` / `JOBS_SHEET_NAME` | Append **new** jobs to the `US-SF-Jobs` warehouse tab (`Role`, `Company`, `Link`, `JD`, `Salary`). No Ready/Auto bid. Redeploy [`apps-script/Code.gs`](apps-script/Code.gs) so `appendWarehouse` is live. Link duplicates are skipped |
+| `SYNC_JOBS_SHEET` / `JOBS_SHEET_WEBAPP_URL` / `JOBS_SHEET_URL` / `JOBS_SHEET_NAME` | After each Node capture, **mirror** `jobs_latest.csv` to the `US-SF-Jobs` warehouse tab (`Role`, `Company`, `Link`, `JD`, `Salary`): clear the tab, then append every CSV row. Older jobs drop off the tab. Skipped when the CSV is empty. No Ready/Auto bid. Redeploy [`apps-script/Code.gs`](apps-script/Code.gs) so `replaceWarehouse` / `appendWarehouse` are live |
 | `CSV_PREFIX_DICE` / `CSV_PREFIX_JOBRIGHT` | Dated filename prefixes (legacy) |
 | Per-source latest CSVs | `download/NN_{source}_jobs_latest.csv` (fixed sequence) plus Workday URL view; each file has a `seq` column |
 | `DATA_DIR` | Output folder (`download`) |
