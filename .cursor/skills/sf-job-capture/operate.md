@@ -8,7 +8,7 @@ Copy and update when running or debugging:
 SF Job Capture:
 - [ ] 1. Confirm .env (RECENT_DAYS, CAPTURE_*, sheet/Slack URLs)
 - [ ] 2. Run capture or trigger via API/scheduler
-- [ ] 3. Check console: per-source counts, skipped reasons
+- [ ] 3. Check console: per-source counts, skipped reasons, "source health" table
 - [ ] 4. Verify download/jobs_latest.csv + store.json
 - [ ] 5. Confirm warehouse append / sheet:sync if needed
 - [ ] 6. Optional: Slack summary / GET /api/status
@@ -95,7 +95,11 @@ Node scheduled capture (feeds / Playwright / JobRight `/swan`) is unchanged and 
 | Source logs `0` jobs | Filters too strict / queries miss | Check `[filter] skip …` reasons; widen seeds temporarily |
 | Playwright board empty + `(blocked)` | Cloudflare / bot detection | Keep off; prefer APIs; try headed login helpers if needed |
 | USAJOBS / Adzuna / Google Jobs empty | Missing keys | Set keys in `.env`; confirm flag not `"false"` |
-| JobRight empty | API shape / page caps | Check `JOBRIGHT_MAX_PAGES`, `ROLE_TITLES` / `JOBRIGHT_TITLES` |
+| JobRight `degraded` / `auth` | Session missing or expired (401 / 41001) → anonymous fallback | `npm run jobright:login`; check `JOBRIGHT_AUTH_PATH` |
+| JobRight anonymous `CHALLENGED` | Rate-limit challenge after ~30 SSR requests | Expected without login; log in for full results |
+| Built In 0 links | IP-geo scoping (`allLocations=true` missing) or page renders late | Keep `allLocations=true`; selector wait in `builtin/search.js` |
+| SimplyHired `error` | Python / `curl_cffi` missing | `npm run py:setup`; set `PYTHON_BIN` |
+| Indeed `blocked` / `error` | Mobile GraphQL key / schema changed | Check `[indeed]` log GraphQL error; fallback `INDEED_MODE=browser` |
 | Good CSV but no sheet rows | Sync off / stale web app | `SYNC_JOBS_SHEET=true`; redeploy Apps Script; check `JOBS_SHEET_WEBAPP_URL` |
 | Jobs already applied still appear | Bid-tracker exclude failed | Sheet must be link-viewable; check `BID_TRACKING_SHEET_URL` / GID |
 | Capture says already running | Overlap | Wait; only one `runCapture` at a time |

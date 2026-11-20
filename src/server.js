@@ -37,6 +37,16 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true, service: "dice-job-capture" });
 });
 
+function parseJsonMeta(key) {
+  const raw = getMeta(key);
+  if (!raw) return null;
+  try {
+    return JSON.parse(String(raw));
+  } catch {
+    return null;
+  }
+}
+
 app.get("/api/status", (_req, res) => {
   try {
     res.json({
@@ -69,7 +79,10 @@ app.get("/api/status", (_req, res) => {
       captureZiprecruiter: config.captureZiprecruiter,
       captureMonster: config.captureMonster,
       captureIndeed: config.captureIndeed,
+      indeedMode: config.indeedMode,
+      captureSimplyhired: config.captureSimplyhired,
       captureCareerbuilder: config.captureCareerbuilder,
+      sourceHealth: parseJsonMeta("last_source_health"),
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });

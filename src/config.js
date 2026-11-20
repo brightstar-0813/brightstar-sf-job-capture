@@ -102,12 +102,30 @@ export const config = {
   captureJobright: bool("CAPTURE_JOBRIGHT", true),
   captureBuiltin: bool("CAPTURE_BUILTIN", true),
   captureGreenhouse: bool("CAPTURE_GREENHOUSE", true),
-  /** Playwright ZipRecruiter — on by default; may no-op if Cloudflare blocks. */
-  captureZiprecruiter: bool("CAPTURE_ZIPRECRUITER", true),
+  /** Playwright ZipRecruiter — Cloudflare-blocked headless; use the extension. */
+  captureZiprecruiter: bool("CAPTURE_ZIPRECRUITER", false),
   /** Often empty/blocked in headless — off by default (prefer public APIs). */
   captureMonster: bool("CAPTURE_MONSTER", false),
-  /** Indeed scrape disabled — set CAPTURE_INDEED=true to re-enable. */
-  captureIndeed: bool("CAPTURE_INDEED", false),
+  /** Indeed via mobile GraphQL API (no browser) — see INDEED_MODE. */
+  captureIndeed: bool("CAPTURE_INDEED", true),
+  /** `api` = apis.indeed.com GraphQL; `browser` = legacy Playwright scrape. */
+  indeedMode:
+    String(process.env.INDEED_MODE || "api").toLowerCase() === "browser"
+      ? "browser"
+      : "api",
+  indeedMaxPages: Math.max(1, Number(process.env.INDEED_MAX_PAGES || 5)),
+  /** SimplyHired via scripts/simplyhired_fetch.py (curl_cffi) — needs PYTHON_BIN. */
+  captureSimplyhired: bool("CAPTURE_SIMPLYHIRED", true),
+  pythonBin: process.env.PYTHON_BIN
+    ? /[\\/]/.test(process.env.PYTHON_BIN)
+      ? path.resolve(root, process.env.PYTHON_BIN)
+      : process.env.PYTHON_BIN
+    : path.join(
+        root,
+        ".venv-jobspy",
+        process.platform === "win32" ? "Scripts/python.exe" : "bin/python"
+      ),
+  simplyhiredPages: Math.max(1, Number(process.env.SIMPLYHIRED_PAGES || 1)),
   /** Often bot-blocked — off by default (prefer public APIs). */
   captureCareerbuilder: bool("CAPTURE_CAREERBUILDER", false),
   /** Public JSON APIs — no browser, not Cloudflare-gated. */
@@ -118,7 +136,8 @@ export const config = {
   captureHimalayas: bool("CAPTURE_HIMALAYAS", true),
   captureJobgether: bool("CAPTURE_JOBGETHER", true),
   captureArbeitnow: bool("CAPTURE_ARBEITNOW", true),
-  captureThemuse: bool("CAPTURE_THEMUSE", true),
+  /** The Muse public API now 404s / Cloudflare-blocks — off by default. */
+  captureThemuse: bool("CAPTURE_THEMUSE", false),
   /** Working Nomads public JSON feed — no key. */
   captureWorkingnomads: bool("CAPTURE_WORKINGNOMADS", true),
   /** Public listing pages (no API): Jobspresso, SkipTheDrive, Arc.dev. */
@@ -444,6 +463,9 @@ export const config = {
     ? csvList("JOBRIGHT_TITLES", DEFAULT_ROLE_TITLES)
     : csvList("ROLE_TITLES", DEFAULT_ROLE_TITLES),
 };
+
+/** SimplyHired search terms — role titles unless SIMPLYHIRED_QUERIES is set. */
+config.simplyhiredQueries = csvList("SIMPLYHIRED_QUERIES", config.roleTitles);
 
 export function pagesForSearchQuery(index) {
   return Number(index) === 0 ? config.maxPages : config.searchExtraPages;

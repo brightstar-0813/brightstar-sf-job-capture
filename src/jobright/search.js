@@ -1,6 +1,8 @@
 /**
- * JobRight.ai Salesforce search — remote US roles via recommend/search API only.
- * No browser, Chrome extension, or login session.
+ * JobRight.ai Salesforce search — remote US roles, no browser.
+ * Auth mode: /swan/recommend/search with cookies from `npm run jobright:login`
+ * (remote + recency filters, paging). Anonymous mode (no / expired session):
+ * public SSR search page, newest ~20 jobs per title, filtered locally.
  */
 
 import { config } from "../config.js";
@@ -16,7 +18,14 @@ import {
   pickJobrightJobUrl,
   buildJobrightDescription,
 } from "./url.js";
-import { fetchRecommendSearch } from "./client.js";
+import {
+  fetchRecommendSearch,
+  hasJobrightSession,
+  isJobrightAuthError,
+} from "./client.js";
+import { fetchJobrightSsr } from "./ssr.js";
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export function buildJobrightSearchUrl(page = 1, query = config.searchQ) {
   const taxonomy = encodeURIComponent(
@@ -98,11 +107,22 @@ function isSalesforceJob(mapped) {
 }
 
 /**
- * Fetch remote Salesforce jobs from JobRight API (no browser, no login).
+ * Fetch remote Salesforce jobs from JobRight (auth API, else anonymous SSR).
  * @param {import('playwright').Browser} [_browser] ignored — kept for capture.js compat
+ * @returns {Promise<{ jobs: object[], status: string, note: string }>}
  */
 export async function searchJobrightJobs(_browser) {
-  console.log(`[jobright] API-only mode (no login session)`);
+  const authPath = config.jobrightAuthPath;
+  let mode = hasJobrightSession(authPath) ? "auth" : "anonymous";
+  let authNote = "";
+  if (mode === "auth") {
+    console.log(`[jobright] mode=auth (session: ${authPath})`);
+  } else {
+    authNote = `no valid session in ${authPath}`;
+    console.warn(
+      `[jobright] WARNING ${authNote} — using anonymous SSR (newest ~20 per title). Run: npm run jobright:login`
+    );
+  }
 
   const all = [];
   const seen = new Set();
@@ -121,28 +141,68 @@ export async function searchJobrightJobs(_browser) {
       : [config.searchQ];
   const pageSize = 20;
   const pagesPerTitle = Math.max(1, config.jobrightMaxPages);
+  let challenged = false;
+  let fetchErrors = 0;
 
-  for (const query of titles) {
-    let titleOk = false;
-    for (let page = 0; page < pagesPerTitle; page += 1) {
+  /** One page of results for `query`; switches to anonymous on auth errors. */
+  async function fetchPage(query, page) {
+    if (mode === "auth") {
       const position = page * pageSize;
-      console.log(
-        `[jobright] API recommend/search query="${query}" page=${page + 1}/${pagesPerTitle} count=${pageSize} position=${position}`
-      );
-      const api = await fetchRecommendSearch({
+      const api = await fetchRecommendSearch(authPath, {
         count: pageSize,
         query,
         daysAgo: config.recentDays,
         position,
       });
       const list = Array.isArray(api.jobList) ? api.jobList : [];
-      apiCount += list.length;
-      if (api.ok) titleOk = true;
       console.log(
-        `[jobright] query="${query}" page=${page + 1} api jobs=${list.length} jobNum=${api.jobNum ?? "?"} ok=${api.ok}` +
+        `[jobright] auth query="${query}" page=${page + 1}/${pagesPerTitle} jobs=${list.length} jobNum=${api.jobNum ?? "?"} ok=${api.ok}` +
           (api.errorMsg ? ` err=${api.errorMsg}` : "")
       );
-      if (!api.ok || !list.length) break;
+      if (isJobrightAuthError(api)) {
+        mode = "anonymous";
+        authNote = `session rejected (${api.status} ${api.errorMsg || ""})`.trim();
+        console.warn(
+          `[jobright] WARNING ${authNote} — switching to anonymous SSR. Run: npm run jobright:login`
+        );
+        return fetchPage(query, 0);
+      }
+      return { ok: api.ok, list, more: list.length >= pageSize };
+    }
+
+    if (page > 0) return { ok: true, list: [], more: false };
+    let ssr = await fetchJobrightSsr(query);
+    if (ssr.challenged) {
+      console.warn(`[jobright] anonymous rate-limit challenge — backing off 30s`);
+      await sleep(30000);
+      ssr = await fetchJobrightSsr(query);
+    }
+    console.log(
+      `[jobright] anonymous query="${query}" jobs=${ssr.jobList.length} ok=${ssr.ok}` +
+        (ssr.via ? ` via=${ssr.via}` : "") +
+        (ssr.challenged ? " CHALLENGED" : ssr.ok ? "" : ` status=${ssr.status}`)
+    );
+    if (ssr.challenged) challenged = true;
+    await sleep(400 + config.delayMs);
+    return { ok: ssr.ok, list: ssr.jobList, more: false };
+  }
+
+  for (const query of titles) {
+    if (challenged) break;
+    let titleOk = false;
+    for (let page = 0; page < pagesPerTitle; page += 1) {
+      let res;
+      try {
+        res = await fetchPage(query, page);
+      } catch (err) {
+        fetchErrors += 1;
+        console.warn(`[jobright] query="${query}" page=${page + 1} failed: ${err.message}`);
+        break;
+      }
+      const list = res.list;
+      apiCount += list.length;
+      if (res.ok) titleOk = true;
+      if (!res.ok || !list.length) break;
 
       for (const item of list) {
         const mapped = mapApiJob(item);
@@ -188,13 +248,13 @@ export async function searchJobrightJobs(_browser) {
         all.push(mapped);
       }
 
-      if (list.length < pageSize) break;
+      if (!res.more) break;
     }
     if (titleOk) queryOkCount += 1;
   }
 
   console.log(
-    `[jobright] kept ${all.length} remote Salesforce jobs` +
+    `[jobright] mode=${mode} kept ${all.length} remote Salesforce jobs` +
       ` (titles=${titles.length}, api=${apiCount}, okQueries=${queryOkCount}/${titles.length},` +
       ` skipped blocked-employer=${employerSkipped},` +
       ` skipped non-remote=${nonRemoteSkipped}, skipped non-Salesforce=${nonSalesforceSkipped},` +
@@ -203,5 +263,17 @@ export async function searchJobrightJobs(_browser) {
       ` skipped stale(>${config.recentDays}d)=${staleSkipped})`
   );
 
-  return { jobs: all };
+  let status = all.length ? "ok" : "empty";
+  if (queryOkCount === 0 && titles.length) status = challenged ? "blocked" : "error";
+  else if (mode === "anonymous") status = all.length ? "degraded" : "auth";
+  const note = [
+    `mode=${mode}`,
+    authNote,
+    challenged ? "anonymous search hit security challenge" : "",
+    fetchErrors ? `${fetchErrors} request(s) failed` : "",
+  ]
+    .filter(Boolean)
+    .join("; ");
+
+  return { jobs: all, status, note };
 }

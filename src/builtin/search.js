@@ -8,6 +8,7 @@ import {
   containsSalesforce,
   isBlockedEmployer,
   isRemoteArrangement,
+  isUsFriendlyLocation,
   isWithinRecentDays,
   parsePostedDate,
   looksSalesforceTitle,
@@ -17,9 +18,15 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/**
+ * `allLocations=true` is required: without it Built In scopes "remote" to the
+ * requester's IP country (non-US IP → zero Salesforce results). Non-US remote
+ * roles are dropped later by the US-location filter.
+ */
 function buildSearchUrl(page = 1, query = config.searchQ) {
   const params = new URLSearchParams();
   params.set("search", query);
+  params.set("allLocations", "true");
   params.set("daysSinceUpdated", String(config.recentDays));
   if (page > 1) params.set("page", String(page));
   return `https://builtin.com/jobs/remote?${params.toString()}`;
@@ -71,17 +78,15 @@ async function scrapeDetail(page, stub) {
     else if (onsite && !remoteBadge) work = "Onsite";
     else if (remoteBadge || /\bremote\b/i.test(bodyText.slice(0, 2500))) work = "Remote";
 
+    // "Posted Yesterday", "Posted 6 Minutes Ago", "Reposted 3 Days Ago", …
     const postedMatch = bodyText.match(
-      /(?:job\s+)?posted\s+(\d+)\s+days?\s+ago|posted\s+today|just posted|reposted\s+(\d+)\s+days?\s+ago/i
+      /(?:re)?posted\s+(yesterday|today|just now|\d+\+?\s+(?:minute|hour|day|week|month)s?\s+ago)/i
     );
-    let datePosted = "";
-    if (postedMatch) {
-      if (/today|just posted/i.test(postedMatch[0])) datePosted = "today";
-      else {
-        const days = Number(postedMatch[1] || postedMatch[2] || 0);
-        datePosted = `${days} days ago`;
-      }
-    }
+    const datePosted = postedMatch ? postedMatch[1].toLowerCase() : "";
+
+    const remoteIn = bodyText
+      .slice(0, 2500)
+      .match(/hiring remotely in\s+([^\n]{2,80})/i);
 
     // Prefer description after the title block — drop nav chrome.
     let description = bodyText;
@@ -94,7 +99,11 @@ async function scrapeDetail(page, stub) {
       work_arrangement: work,
       date_posted_raw: datePosted,
       description: description.replace(/\n{3,}/g, "\n\n").trim().slice(0, 20000),
-      location: remoteBadge ? "Remote" : "",
+      location: remoteIn
+        ? `Remote, ${remoteIn[1].trim()}`
+        : remoteBadge
+          ? "Remote"
+          : "",
     };
   });
 
@@ -125,6 +134,20 @@ async function scrapeDetail(page, stub) {
 }
 
 /**
+ * Built In's "Hiring Remotely in <place>" always names a country ("USA",
+ * "India", "Chennai, Tamilnadu, IND"); a named place without a US marker is
+ * foreign. Multi-location / anywhere postings are left to the shared filter.
+ */
+function isNonUsRemotePlace(location) {
+  const m = String(location || "").match(/^Remote,\s*(.+)$/i);
+  if (!m) return false;
+  const place = m[1];
+  if (/\b(usa|united states|u\.s\.?|us)\b/i.test(place)) return false;
+  if (/\blocations?\b|anywhere|worldwide|north america|americas/i.test(place)) return false;
+  return true;
+}
+
+/**
  * @param {import('playwright').Browser} browser
  */
 export async function searchBuiltinJobs(browser) {
@@ -132,6 +155,7 @@ export async function searchBuiltinJobs(browser) {
   const page = await context.newPage();
   const stubs = [];
   const seen = new Set();
+  let listingErrors = 0;
 
   try {
     const queries =
@@ -143,9 +167,19 @@ export async function searchBuiltinJobs(browser) {
       for (let p = 1; p <= pages; p += 1) {
         const url = buildSearchUrl(p, query);
         console.log(`[builtin] q="${query}" page ${p}/${pages}: ${url}`);
-        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
-        await sleep(2500 + config.delayMs);
-        const batch = await scrapeListingPage(page);
+        let batch;
+        try {
+          await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
+          await page
+            .waitForSelector('a[href*="/job/"]', { timeout: 12000 })
+            .catch(() => {});
+          await sleep(1000 + config.delayMs);
+          batch = await scrapeListingPage(page);
+        } catch (err) {
+          listingErrors += 1;
+          console.warn(`[builtin] q="${query}" page ${p} failed: ${err.message.split("\n")[0]}`);
+          break;
+        }
         console.log(`[builtin] q="${query}" page ${p}: found ${batch.length} links`);
         if (!batch.length) break;
         let added = 0;
@@ -155,12 +189,14 @@ export async function searchBuiltinJobs(browser) {
           stubs.push(s);
           added += 1;
         }
-        if (added === 0) break;
+        // Built In shows 25 per page; a short page is the last one.
+        if (added === 0 || batch.length < 20) break;
       }
     }
 
     const kept = [];
     let nonRemote = 0;
+    let nonUs = 0;
     let nonSf = 0;
     let stale = 0;
     let employer = 0;
@@ -190,6 +226,10 @@ export async function searchBuiltinJobs(browser) {
           nonRemote += 1;
           continue;
         }
+        if (!isUsFriendlyLocation(job.location, job.title) || isNonUsRemotePlace(job.location)) {
+          nonUs += 1;
+          continue;
+        }
         if (!containsSalesforce(job.title, job.description)) {
           nonSf += 1;
           continue;
@@ -208,9 +248,17 @@ export async function searchBuiltinJobs(browser) {
     console.log(
       `[builtin] kept ${kept.length} remote Salesforce jobs` +
         ` (stubs=${stubs.length}, skipped title=${skippedTitle}, skipped employer=${employer}, non-remote=${nonRemote},` +
-        ` non-Salesforce=${nonSf}, stale=${stale})`
+        ` non-US=${nonUs}, non-Salesforce=${nonSf}, stale=${stale})`
     );
-    return { jobs: kept };
+    let status = kept.length ? "ok" : "empty";
+    if (!stubs.length && listingErrors) status = "error";
+    const note = [
+      stubs.length ? "" : "search pages returned no job links",
+      listingErrors ? `${listingErrors} listing page(s) failed to load` : "",
+    ]
+      .filter(Boolean)
+      .join("; ");
+    return { jobs: kept, status, note };
   } finally {
     await context.close();
   }

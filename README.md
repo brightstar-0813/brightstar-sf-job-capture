@@ -1,6 +1,8 @@
 # Salesforce Job Capture (multi-source)
 
-Capture **remote Salesforce-ecosystem** jobs from **public APIs first** (Greenhouse / Lever / Ashby boards, Remotive, Jobicy, Remote OK, We Work Remotely, Working Nomads, Himalayas, Jobgether, Arbeitnow, The Muse, USAJOBS, Adzuna), plus Dice, JobRight, Built In, Playwright **ZipRecruiter**, and optional Google Jobs (SerpAPI) **at 5 AM and 5 PM**. **Monster / CareerBuilder / Indeed** stay **off by default**.
+Capture **remote Salesforce-ecosystem** jobs from **public APIs first** (Greenhouse / Lever / Ashby boards, Remotive, Jobicy, Remote OK, We Work Remotely, Working Nomads, Himalayas, Jobgether, Arbeitnow, USAJOBS, Adzuna, **Indeed mobile API**), plus Dice, JobRight, Built In, **SimplyHired** (Python helper), and optional Google Jobs (SerpAPI) **at 5 AM and 5 PM**. **ZipRecruiter / Monster / CareerBuilder / The Muse** are bot-blocked for headless Node and are **off by default** — use the Chrome extension for those.
+
+Each run ends with a **source health** summary (`ok` / `empty` / `degraded` / `blocked` / `auth` / `error`). Unhealthy sources are flagged in the console, the Slack message, and `GET /api/status` (`sourceHealth`).
 
 ## What gets saved
 
@@ -25,28 +27,33 @@ Filter (applied to all sources):
 | Source | How it runs | Notes |
 |--------|-------------|-------|
 | **Dice** | Windows Task Scheduler | Anonymous Playwright scrape (no login). Searches `SEARCH_QUERIES` (Salesforce, Health Cloud, Data Cloud, …) |
-| **JobRight** | Scheduler + `/swan` API | No login. Seeds `ROLE_TITLES` (or `JOBRIGHT_TITLES`), `count=20`, pages with `position` up to `JOBRIGHT_MAX_PAGES` (default 5) |
-| **Built In** | Scheduler (Playwright) | Remote search of `ROLE_TITLES`, `ROLE_PAGES` each (default 2). Skips listings whose titles aren't Salesforce-related |
+| **JobRight** | Scheduler + `/swan` API, anonymous fallback | Saved login (`npm run jobright:login`): seeds `ROLE_TITLES` (or `JOBRIGHT_TITLES`), `count=20`, pages up to `JOBRIGHT_MAX_PAGES`. No/expired session: public search pages, newest ~20 per title (health `degraded`) |
+| **Built In** | Scheduler (Playwright) | Remote search of `ROLE_TITLES` with `allLocations=true` (otherwise Built In scopes "remote" to the requester's IP country), `ROLE_PAGES` each (default 2). Non-US "Hiring Remotely in …" roles are dropped |
+| **Indeed** | Scheduler (mobile GraphQL API) | No browser or login. `SEARCH_QUERIES` (multi-word phrase-quoted), location Remote, last `RECENT_DAYS`, 100 per page up to `INDEED_MAX_PAGES` (default 5). `INDEED_MODE=browser` restores the old Playwright scrape |
+| **SimplyHired** | Scheduler (Python `curl_cffi` helper) | Node/Playwright get a Cloudflare 403; the helper's Safari-iOS TLS fingerprint passes. Searches `ROLE_TITLES` (or `SIMPLYHIRED_QUERIES`), `SIMPLYHIRED_PAGES` each. Needs `npm run py:setup` once |
 | **Greenhouse / Lever / Ashby** | Scheduler (public company-board APIs) | Direct from employer career sites — Salesforce ISVs, partners, and companies that hire SF admins/devs (`GREENHOUSE_BOARDS`, `LEVER_BOARDS`, `ASHBY_BOARDS`) |
-| **Remotive / Jobicy / Remote OK / We Work Remotely / Working Nomads / The Muse / Jobspresso / SkipTheDrive / Arc.dev** | Scheduler (public JSON, RSS, or listing pages) | No browser. Jobspresso searches `ROLE_TITLES` (`ROLE_PAGES` each). SkipTheDrive and Arc.dev read public search pages for `SEARCH_QUERIES` |
+| **Remotive / Jobicy / Remote OK / We Work Remotely / Working Nomads / Jobspresso / SkipTheDrive / Arc.dev** | Scheduler (public JSON, RSS, or listing pages) | No browser. Jobspresso searches `ROLE_TITLES` (`ROLE_PAGES` each). SkipTheDrive and Arc.dev read public search pages for `SEARCH_QUERIES` |
 | **Himalayas / Jobgether / Arbeitnow** | Scheduler (public JSON APIs) | No browser. Jobgether’s offer API; Himalayas remote search. Arbeitnow is EU-heavy so few US hits. |
 | **USAJOBS / Adzuna** | Scheduler (public APIs, optional keys) | Federal remote roles (USAJOBS) and US aggregator (Adzuna). Free keys at [developer.usajobs.gov](https://developer.usajobs.gov) and [developer.adzuna.com](https://developer.adzuna.com). Skipped until keys are set. |
 | **Google Jobs** | Scheduler (SerpAPI, optional) | Google has no free Jobs API. Set `SERPAPI_KEY` to enable. |
-| **ZipRecruiter** | Scheduler (Playwright) | **On by default** (`CAPTURE_ZIPRECRUITER=true`). May no-op if Cloudflare blocks. |
-| **Monster / CareerBuilder** | Scheduler (Playwright) | **Off by default** — often empty or bot-blocked in headless. |
-| **Indeed** | Scheduler (Playwright) | **Off by default** — set `CAPTURE_INDEED=true` and run `npm run indeed:login` if needed. |
+| **ZipRecruiter / Monster / CareerBuilder** | Chrome extension (Playwright adapters kept) | **Off by default** — Cloudflare (Zip) and DataDome (Monster, CareerBuilder) block headless Node, including their JSON APIs. |
+| **The Muse** | — | **Off by default** — public API returns 404 / Cloudflare. |
 
-Glassdoor and other JobSpy-only niche remotes are **not scraped** (legacy `source` labels may still appear in `store.json` / CSV from older runs).
+Glassdoor (Cloudflare-blocked) and other JobSpy-only niche remotes are **not scraped** (legacy `source` labels may still appear in `store.json` / CSV from older runs).
 
-### Indeed (disabled by default)
+### Indeed (mobile API)
 
-Indeed scraping is **off** (`CAPTURE_INDEED=false`). To re-enable: set `CAPTURE_INDEED=true`, run `npm run indeed:login` once (Cloudflare), then capture. JobRight apply links that point at Indeed are still kept when complete.
+`CAPTURE_INDEED=true` + `INDEED_MODE=api` (defaults) query `apis.indeed.com/graphql` — the endpoint the Indeed iOS app (and python-jobspy) uses. No browser, login, or Cloudflare. Set `INDEED_MODE=browser` to use the legacy Playwright scraper (`npm run indeed:login` once).
 
-### JobRight (API-only, no login)
+### JobRight (login + anonymous fallback)
 
-JobRight is fetched via **`POST /swan/recommend/search`** with no saved session. No Chrome extension and no JobRight search pages are opened during scheduled capture.
+1. Run `npm run jobright:login` once — a browser opens; sign in, then press Enter. Cookies are saved to `JOBRIGHT_AUTH_PATH` (the session lasts ~60 days).
+2. Each run calls **`POST /swan/recommend/search`** with those cookies (remote + recency filters, pages of 20 up to `JOBRIGHT_MAX_PAGES`).
+3. If the session is missing or rejected (HTTP 401 / `errorCode` 41001), capture **warns** and falls back to JobRight's public search pages: newest ~20 jobs per title, no filters or paging, about 30 titles per run before JobRight's rate-limit challenge. Remote / Salesforce / recency filters still apply locally. Health shows `degraded` — re-run `npm run jobright:login`.
 
-Set `CAPTURE_JOBRIGHT=true` (default). Each seed title is requested in pages of 20 (`position = page * 20`) until a short page or `JOBRIGHT_MAX_PAGES` (default 5, up to 100 rows per title).
+### SimplyHired (Python helper)
+
+Run `npm run py:setup` once (creates/repairs `.venv-jobspy` and installs `curl_cffi`). Capture spawns `scripts/simplyhired_fetch.py` with `PYTHON_BIN` (default `.venv-jobspy/Scripts/python.exe`). If Python is missing the source reports `error` and the rest of the run continues.
 
 Export CSV from `download/jobs_latest.csv`, numbered per-source files like `download/05_dice_jobs_latest.csv`, or `http://127.0.0.1:3847/api/export.csv` (optional `?source=dice`). Full multi-board capture still runs from Task Scheduler / `npm run capture`.
 
@@ -94,13 +101,13 @@ Then load `extension/` unpacked in Chrome (`chrome://extensions` → Developer m
 | **Node API / Playwright / feeds** | Scheduled `npm run capture`, cron, `POST /api/run` | `.env` `CAPTURE_*` flags — unchanged |
 | **Extension DOM** | Logged-in Chrome scrapes Indeed / ZipRecruiter / Monster / CareerBuilder (+ optional JobRight `/swan` in-page) | Extension popup source checkboxes, Options, or `POST /api/extension/capture` |
 
-Running one path does **not** disable the other. Prefer the extension for Indeed / Zip / Monster / CareerBuilder when you are signed in; keep `CAPTURE_INDEED=false` (etc.) if you want Node to skip those boards.
+Running one path does **not** disable the other. Prefer the extension for Zip / Monster / CareerBuilder when you are signed in (Node has those off by default). Indeed is covered by the Node mobile-API adapter.
 
 Popup: select sources → **Start** / **Stop** / **Resume**. On CAPTCHA / login / Cloudflare the badge shows `!` — complete the challenge, then **Resume**. Offline ingest batches buffer in extension storage and retry (**Flush buffer**). Options: queries, pages, schedule hours, dry-run, bid-tracker exclude.
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /api/status` | Last run, CSV paths |
+| `GET /api/status` | Last run, CSV paths, `sourceHealth` from the last capture |
 | `GET /api/jobs?status=new` | New jobs |
 | `POST /api/run` | Trigger Node capture |
 | `POST /api/ingest` | Extension posts jobs (`source`, `trusted`, `excludeBidTracking`) |
@@ -114,13 +121,16 @@ Popup: select sources → **Start** / **Stop** / **Resume**. On CAPTCHA / login 
 | Key | Meaning |
 |-----|---------|
 | `CAPTURE_DICE` | `true`/`false` |
-| `CAPTURE_JOBRIGHT` | JobRight via `/swan` API, no login (`true` by default) |
-| `CAPTURE_REMOTIVE` / `CAPTURE_JOBICY` / `CAPTURE_REMOTEOK` / `CAPTURE_WWR` / `CAPTURE_THEMUSE` | Public JSON/RSS (`true` by default) |
+| `CAPTURE_JOBRIGHT` | JobRight via `/swan` API with saved login, anonymous fallback (`true` by default) |
+| `CAPTURE_INDEED` / `INDEED_MODE` / `INDEED_MAX_PAGES` | Indeed mobile GraphQL (`true`, `api`, `5`); `browser` = legacy Playwright |
+| `CAPTURE_SIMPLYHIRED` / `PYTHON_BIN` / `SIMPLYHIRED_QUERIES` / `SIMPLYHIRED_PAGES` | SimplyHired via the Python `curl_cffi` helper (`true`; venv python; `ROLE_TITLES`; `1`) |
+| `CAPTURE_REMOTIVE` / `CAPTURE_JOBICY` / `CAPTURE_REMOTEOK` / `CAPTURE_WWR` | Public JSON/RSS (`true` by default) |
+| `CAPTURE_THEMUSE` | `false` by default (API discontinued / blocked) |
 | `CAPTURE_HIMALAYAS` / `CAPTURE_JOBGETHER` / `CAPTURE_ARBEITNOW` | Extra public JSON APIs (`true` by default) |
 | `CAPTURE_GOOGLEJOBS` / `SERPAPI_KEY` | Google Jobs via SerpAPI (skipped until a key is set) |
 | `CAPTURE_LEVER` / `CAPTURE_ASHBY` | Company career boards on Lever / Ashby (`true` by default) |
 | `GREENHOUSE_BOARDS` / `LEVER_BOARDS` / `ASHBY_BOARDS` | Comma-separated company board tokens to poll |
-| `CAPTURE_ZIPRECRUITER` / `CAPTURE_MONSTER` / `CAPTURE_CAREERBUILDER` / `CAPTURE_INDEED` | Playwright boards — ZipRecruiter on by default; Monster / CareerBuilder / Indeed off by default |
+| `CAPTURE_ZIPRECRUITER` / `CAPTURE_MONSTER` / `CAPTURE_CAREERBUILDER` | Playwright boards — off by default (bot-blocked); use the extension |
 | `JOBICY_TAGS` | Jobicy API tags (default `salesforce,crm,mulesoft,apex`) |
 | `SEARCH_QUERIES` | Comma-separated Dice/Remotive/Himalayas product searches (default includes Health Cloud, Data Cloud, Marketing Cloud, Service Cloud, Agentforce, OmniStudio, Salesforce CPQ). Built In and Jobspresso use `ROLE_TITLES` instead |
 | `ROLE_TITLES` | Comma-separated role seeds for Built In, Jobspresso, and JobRight (32 Salesforce role titles by default). A bare "Salesforce" query is not used on those boards |

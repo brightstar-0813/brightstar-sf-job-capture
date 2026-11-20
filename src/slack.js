@@ -65,6 +65,8 @@ function jobSourceTag(job) {
     greenhouse: "[Greenhouse] ",
     ziprecruiter: "[ZipRecruiter] ",
     monster: "[Monster] ",
+    indeed: "[Indeed] ",
+    simplyhired: "[SimplyHired] ",
   };
   return labels[s] || "";
 }
@@ -88,6 +90,7 @@ export async function notifyCaptureComplete({
   updatedCount = 0,
   skippedCount = 0,
   newJobs = [],
+  health = [],
 }) {
   if (!webhookUrl || !isSlackWebhookUrl(webhookUrl)) {
     return { skipped: true, reason: "no_webhook" };
@@ -130,10 +133,18 @@ export async function notifyCaptureComplete({
       : "";
 
   const header = `*${label} Salesforce capture* (run #${runId})\nnew: *${newCount}* · updated: ${updatedCount} · skipped filter: ${skippedCount}`;
+  const unhealthy = (health || []).filter(
+    (h) => h && !["ok", "empty"].includes(h.status)
+  );
+  const healthLine = unhealthy.length
+    ? `\n:warning: *Source issues:* ${unhealthy
+        .map((h) => `${h.source} (${h.status}${h.note ? `: ${truncate(h.note, 80)}` : ""})`)
+        .join("; ")}`
+    : "";
   const body =
-    newCount > 0
+    (newCount > 0
       ? `${header}\n\n${bullets.join("\n")}${more}`
-      : `${header}\n_No new Salesforce jobs this run._`;
+      : `${header}\n_No new Salesforce jobs this run._`) + healthLine;
 
   await postSlackMessage(webhookUrl, body);
   return { ok: true };

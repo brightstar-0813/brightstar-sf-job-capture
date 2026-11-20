@@ -10,6 +10,8 @@
     "sheet:replace": "node src/sheet-sync-csv.js --replace",
     "start": "node src/server.js",
     "indeed:login": "node src/indeed-login.js",
+    "jobright:login": "node src/jobright-login.js",
+    "py:setup": "powershell -ExecutionPolicy Bypass -File scripts/setup-python.ps1",
     "schedule:install": "powershell -ExecutionPolicy Bypass -File scripts/install-all-schedulers.ps1",
     "schedule:dice": "powershell -ExecutionPolicy Bypass -File scripts/install-scheduler.ps1",
     "schedule:api": "powershell -ExecutionPolicy Bypass -File scripts/install-api-autostart.ps1",

@@ -19,6 +19,8 @@ import { searchAshbyJobs } from "./ashby/search.js";
 import { searchZiprecruiterJobs } from "./ziprecruiter/search.js";
 import { searchMonsterJobs } from "./monster/search.js";
 import { searchIndeedJobs } from "./indeed/search.js";
+import { searchIndeedApiJobs } from "./indeed/api.js";
+import { searchSimplyhiredJobs } from "./simplyhired/search.js";
 import { searchCareerbuilderJobs } from "./careerbuilder/search.js";
 import { searchRemotiveJobs } from "./remotive/search.js";
 import { searchJobicyJobs } from "./jobicy/search.js";
@@ -43,6 +45,7 @@ import {
   syncCsv,
   closeStore,
   getMeta,
+  setMeta,
   pruneStore,
   repairJobrightUrls,
   removeJobsWhere,
@@ -111,17 +114,52 @@ function enabledSources() {
   if (config.captureZiprecruiter) out.push("ziprecruiter");
   if (config.captureMonster) out.push("monster");
   if (config.captureIndeed) out.push("indeed");
+  if (config.captureSimplyhired) out.push("simplyhired");
   if (config.captureCareerbuilder) out.push("careerbuilder");
   if (config.captureJobright) out.push("jobright");
   return out;
 }
 
+/** Per-run source health: { source, jobs, status, note }. */
+let sourceHealth = [];
+
+/** ok | empty | degraded | blocked | auth | error */
+function recordHealth(name, result, err) {
+  const jobs = Array.isArray(result?.jobs) ? result.jobs.length : 0;
+  let status = result?.status;
+  if (err) status = "error";
+  else if (!status) status = result?.blocked ? "blocked" : jobs ? "ok" : "empty";
+  const note = err ? err.message : String(result?.note || "");
+  sourceHealth.push({ source: name, jobs, status, note });
+}
+
+/** Runs one adapter; `fn` must return the adapter result ({ jobs, status?, note?, blocked? }). */
 async function runNamedSource(name, fn) {
   try {
-    return await fn();
+    const result = await fn();
+    recordHealth(name, result, null);
+    return result;
   } catch (err) {
     console.warn(`[capture] ${name} failed: ${err.message}`);
+    recordHealth(name, null, err);
     return null;
+  }
+}
+
+function logHealthSummary() {
+  if (!sourceHealth.length) return;
+  console.log("[capture] source health:");
+  for (const h of sourceHealth) {
+    const flag = ["ok", "empty"].includes(h.status) ? "  " : "!!";
+    console.log(
+      `  ${flag} ${h.source.padEnd(14)} ${h.status.padEnd(9)} jobs=${String(h.jobs).padEnd(4)} ${h.note}`
+    );
+  }
+  const bad = sourceHealth.filter((h) => !["ok", "empty"].includes(h.status));
+  if (bad.length) {
+    console.warn(
+      `[capture] WARNING unhealthy sources: ${bad.map((h) => `${h.source}(${h.status})`).join(", ")}`
+    );
   }
 }
 
@@ -148,6 +186,10 @@ async function collectFeedJobs() {
   if (config.captureUsajobs) runners.push(["usajobs", searchUsajobsJobs]);
   if (config.captureAdzuna) runners.push(["adzuna", searchAdzunaJobs]);
   if (config.captureGooglejobs) runners.push(["googlejobs", searchGoogleJobs]);
+  if (config.captureIndeed && config.indeedMode === "api") {
+    runners.push(["indeed", searchIndeedApiJobs]);
+  }
+  if (config.captureSimplyhired) runners.push(["simplyhired", searchSimplyhiredJobs]);
   if (!runners.length) return [];
 
   const batches = await Promise.all(
@@ -178,6 +220,7 @@ export async function runCapture({ skipSlack = false } = {}) {
   let browser;
   try {
     sheetExclusions = null;
+    sourceHealth = [];
     if (config.excludeBidTrackingSheet) {
       sheetExclusions = await loadBidTrackingExclusions();
       if (!sheetExclusions.ok) {
@@ -194,9 +237,10 @@ export async function runCapture({ skipSlack = false } = {}) {
     // Built In before Dice (highest Playwright yield).
     if (config.captureBuiltin) {
       await runNamedSource("builtin", async () => {
-        const { jobs } = await searchBuiltinJobs(browser);
-        console.log(`[capture] builtin jobs: ${jobs.length}`);
-        ingestJobs(jobs, runId, counts, newJobs);
+        const result = await searchBuiltinJobs(browser);
+        console.log(`[capture] builtin jobs: ${result.jobs.length}`);
+        ingestJobs(result.jobs, runId, counts, newJobs);
+        return result;
       });
     }
 
@@ -214,46 +258,54 @@ export async function runCapture({ skipSlack = false } = {}) {
         const details = await scrapeJobDetails(browser, relevant);
         console.log(`[capture] dice details: ${details.length}`);
         ingestJobs(details, runId, counts, newJobs);
+        return {
+          jobs: details,
+          note: stubs.length ? "" : "search returned no listings",
+        };
       });
     }
 
     if (config.captureZiprecruiter) {
       await runNamedSource("ziprecruiter", async () => {
-        const { jobs, blocked } = await searchZiprecruiterJobs(browser);
+        const result = await searchZiprecruiterJobs(browser);
         console.log(
-          `[capture] ziprecruiter jobs: ${jobs.length}${blocked ? " (blocked)" : ""}`
+          `[capture] ziprecruiter jobs: ${result.jobs.length}${result.blocked ? " (blocked)" : ""}`
         );
-        ingestJobs(jobs, runId, counts, newJobs);
+        ingestJobs(result.jobs, runId, counts, newJobs);
+        return result;
       });
     }
 
     if (config.captureMonster) {
       await runNamedSource("monster", async () => {
-        const { jobs, blocked } = await searchMonsterJobs(browser);
+        const result = await searchMonsterJobs(browser);
         console.log(
-          `[capture] monster jobs: ${jobs.length}${blocked ? " (blocked)" : ""}`
+          `[capture] monster jobs: ${result.jobs.length}${result.blocked ? " (blocked)" : ""}`
         );
-        ingestJobs(jobs, runId, counts, newJobs);
+        ingestJobs(result.jobs, runId, counts, newJobs);
+        return result;
       });
     }
 
-    if (config.captureIndeed) {
+    if (config.captureIndeed && config.indeedMode === "browser") {
       await runNamedSource("indeed", async () => {
-        const { jobs, blocked } = await searchIndeedJobs(browser);
+        const result = await searchIndeedJobs(browser);
         console.log(
-          `[capture] indeed jobs: ${jobs.length}${blocked ? " (blocked)" : ""}`
+          `[capture] indeed jobs: ${result.jobs.length}${result.blocked ? " (blocked)" : ""}`
         );
-        ingestJobs(jobs, runId, counts, newJobs);
+        ingestJobs(result.jobs, runId, counts, newJobs);
+        return result;
       });
     }
 
     if (config.captureCareerbuilder) {
       await runNamedSource("careerbuilder", async () => {
-        const { jobs, blocked } = await searchCareerbuilderJobs(browser);
+        const result = await searchCareerbuilderJobs(browser);
         console.log(
-          `[capture] careerbuilder jobs: ${jobs.length}${blocked ? " (blocked)" : ""}`
+          `[capture] careerbuilder jobs: ${result.jobs.length}${result.blocked ? " (blocked)" : ""}`
         );
-        ingestJobs(jobs, runId, counts, newJobs);
+        ingestJobs(result.jobs, runId, counts, newJobs);
+        return result;
       });
     }
 
@@ -265,9 +317,10 @@ export async function runCapture({ skipSlack = false } = {}) {
     // JobRight last among browser sources (lowest source priority).
     if (config.captureJobright) {
       await runNamedSource("jobright", async () => {
-        const { jobs: jrJobs } = await searchJobrightJobs(browser);
-        console.log(`[capture] jobright jobs: ${jrJobs.length}`);
-        ingestJobs(jrJobs, runId, counts, newJobs);
+        const result = await searchJobrightJobs(browser);
+        console.log(`[capture] jobright jobs: ${result.jobs.length}`);
+        ingestJobs(result.jobs, runId, counts, newJobs);
+        return result;
       });
     }
 
@@ -317,6 +370,11 @@ export async function runCapture({ skipSlack = false } = {}) {
     if (parts) {
       console.log(`[capture] per-source csv: ${parts}`);
     }
+    logHealthSummary();
+    setMeta(
+      "last_source_health",
+      JSON.stringify({ runId, at: new Date().toISOString(), sources: sourceHealth })
+    );
 
     let sheetOut = null;
     if (config.syncJobsSheet) {
@@ -349,6 +407,7 @@ export async function runCapture({ skipSlack = false } = {}) {
           source: enabled.join("+"),
           ...counts,
           newJobs,
+          health: sourceHealth,
         });
       } catch (slackErr) {
         console.warn(`[slack] ${slackErr.message}`);
@@ -366,6 +425,7 @@ export async function runCapture({ skipSlack = false } = {}) {
       csvCount: csvOut.count,
       lastCsv: getMeta("last_csv_path"),
       sheet: sheetOut,
+      health: sourceHealth,
     };
   } catch (err) {
     const error = err.message || String(err);
